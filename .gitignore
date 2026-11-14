@@ -1,0 +1,4 @@
+# Local capture artifacts: the demo writes ANSI here when pointed at it.
+*.ansi
+/shots/
+/dist/
