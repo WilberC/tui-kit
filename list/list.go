@@ -11,15 +11,18 @@ import (
 
 	"github.com/WilberC/tui-kit/text"
 	"github.com/WilberC/tui-kit/theme"
+	"github.com/WilberC/tui-kit/zone"
 )
 
 // Roles is the set of roles one row paints with. A row is either on the panel
-// surface or selected, and the selection is a tint: every element keeps the
-// meaning its colour carries, with the muted and structural tones lifted so they
-// still read on the darker background.
+// surface, hovered, or selected, and both tints are tints: every element keeps
+// the meaning its colour carries, with the muted and structural tones lifted so
+// they still read on the darker background. The selection wins over the hover.
 type Roles struct {
 	// Selected says whether the row is the highlighted one.
 	Selected bool
+	// Hovered says whether the pointer is over the row and it is not selected.
+	Hovered bool
 	// Name is the row's primary text: the session, the layout, the workspace.
 	Name lipgloss.Style
 	// Muted is every secondary fact: workspace, counts, age, path.
@@ -50,6 +53,20 @@ var (
 		Teal:  theme.Teal,
 		Red:   theme.Red,
 	}
+	hoverRoles = Roles{
+		Hovered: true,
+		Name:    theme.TextOnHover,
+		Muted:   theme.MutedOnHover,
+		Guide:   theme.GuideOnHover,
+		Space:   theme.HoverBG,
+		// A chip carries its own surface, so it steps onto the hover tint rather
+		// than brightening like the selection's: a hover is a preview.
+		Chip:  theme.ChipText,
+		Gold:  theme.OnHover(theme.Gold),
+		Green: theme.OnHover(theme.Green),
+		Teal:  theme.OnHover(theme.Teal),
+		Red:   theme.OnHover(theme.Red),
+	}
 	selectionRoles = Roles{
 		Selected: true,
 		Name:     theme.TextOnSelection,
@@ -64,14 +81,31 @@ var (
 	}
 )
 
-// RowRoles returns the roles a row paints with: the panel surface, or the
-// selection variants when the row is the highlighted one.
-func RowRoles(selected bool) Roles {
-	if selected {
-		return selectionRoles
-	}
-	return panelRoles
+// State is how a row is marked: the highlighted row, the row under the pointer,
+// or neither. Selecting wins, so a row that is both stays the selection.
+type State struct {
+	Selected bool
+	Hovered  bool
 }
+
+// RowRolesFor returns the roles a row paints with: the panel surface, the faint
+// hover tint, or the selection.
+func RowRolesFor(state State) Roles {
+	switch {
+	case state.Selected:
+		return selectionRoles
+	case state.Hovered:
+		return hoverRoles
+	default:
+		return panelRoles
+	}
+}
+
+// RowRoles returns the roles a row paints with: the panel surface, or the
+// selection variants when the row is the highlighted one. It is
+// RowRolesFor(State{Selected: selected}), kept so the callers that only know the
+// selection keep compiling.
+func RowRoles(selected bool) Roles { return RowRolesFor(State{Selected: selected}) }
 
 // Pad fits s into width cells, filling the rest with the row's own background,
 // so a selected row's tint has no gaps between its columns.
@@ -121,6 +155,13 @@ func (r Roles) AgentState(state string) string {
 		return r.Muted.Render(state)
 	}
 }
+
+// Mark is the gold ◆ a row carries for state that outlives the selection: the
+// default item, the focused workspace. It follows the row's facts after two cells
+// of the row's own background, so a marked row never moves its chip column or its
+// description, and a mark is never the first thing on a row: it is not a second
+// cursor. On a tinted row it takes that row's roles, so the gold stays gold.
+func Mark(roles Roles) string { return roles.Gap(2) + roles.Gold.Render(text.Mark) }
 
 // StateGlyph is the glyph a running state renders with: green when live, muted
 // when quiescent.
@@ -179,19 +220,66 @@ func SelectedRow(row string, width int) string {
 	return theme.SelectionEdge.Render(text.SelectMark) + body
 }
 
+// rowIndent is how many cells the tree guide and its indents take before a row's
+// body starts: two for the indent, two for the guide, one after it.
+const rowIndent = 5
+
+// Entry is one listed chip row: the roles it paints with, its place in its group,
+// its two columns, and where it goes in a zone map. Rendering it records the row
+// and its chip slab as zones, which is what lets a product act on a click without
+// measuring the layout itself.
+//
+// Entry is ChipRow plus the two zone ids, so the rows that need no zone keep
+// calling ChipRow.
+type Entry struct {
+	Roles       Roles
+	Last        bool
+	Cell        string
+	Description string
+	Width       int
+	// ID names the whole row — indent and columns, so a click anywhere on it
+	// selects it — in Zones. An empty ID records no row zone.
+	ID string
+	// ChipID names the chip slab of the cell: the cell minus the plain space that
+	// follows it. Leave it empty for an entry with no key of its own
+	// (chip.UnsetCell draws no slab), so no click lands on a token that is not
+	// there.
+	ChipID string
+	// Zones is the map the entry records itself in, in that map's coordinates. A
+	// nil map records nothing.
+	Zones *zone.Map
+	// X and Y are where the row's first cell goes in the map's coordinates.
+	X int
+	Y int
+}
+
+// Render draws the entry and records its zones.
+func (e Entry) Render() string {
+	if e.Width <= 0 {
+		return ""
+	}
+	row := Row(e.Roles, e.Last, e.Cell+e.Description)
+	if e.Roles.Selected {
+		row = SelectedRow(row, e.Width)
+	} else {
+		row = e.Roles.Pad(row, e.Width)
+	}
+
+	if e.ID != "" {
+		e.Zones.Add(e.ID, e.X, e.Y, e.Width, 1)
+	}
+	if e.ChipID != "" && text.Width(e.Cell) > 1 {
+		e.Zones.Add(e.ChipID, e.X+rowIndent, e.Y, text.Width(e.Cell)-1, 1)
+	}
+	return row
+}
+
 // ChipRow renders one listed entry whose first column is a chip cell: the tree
 // guide, the cell (see chip.Cell), then the description. On the selection tint
 // the row's first cell becomes the accent edge and the tint runs to width, so
 // the description keeps the x it has on the panel.
 func ChipRow(roles Roles, last bool, cell, description string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	row := Row(roles, last, cell+description)
-	if roles.Selected {
-		return SelectedRow(row, width)
-	}
-	return roles.Pad(row, width)
+	return Entry{Roles: roles, Last: last, Cell: cell, Description: description, Width: width}.Render()
 }
 
 // Section renders a group header: the filled gold glyph that opens a group, its

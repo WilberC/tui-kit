@@ -32,6 +32,7 @@ func TestThePaletteIsTheApprovedTokyonightSet(t *testing.T) {
 		"red":               {theme.ColorRed, "#f7768e"},
 		"chip surface":      {theme.ColorChip, "#2f3549"},
 		"selection tint":    {theme.ColorSelection, "#283457"},
+		"hover tint":        {theme.ColorHover, "#21273f"},
 		"chip on tint":      {theme.ColorChipOnSelection, "#3d59a1"},
 		"muted on tint":     {theme.ColorMutedOnSelection, "#737aa2"},
 		"the guide on tint": {theme.ColorGuideOnSelection, "#5f6b96"},

@@ -104,14 +104,16 @@ func TestHintBarFitsExactlyLikeHints(t *testing.T) {
 		chip.Pair(theme.ChipText, "↑↓", "move")
 
 	for _, page := range []int{0, 1, -3, 9} {
-		if got := (chip.HintBar{Page: page}).Render(80, hints...); got != want {
+		bar := chip.HintBar{Page: page}
+		if got := bar.Render(80, hints...); got != want {
 			t.Fatalf("HintBar{Page: %d}.Render(80) = %q, want %q", page, got, want)
 		}
 	}
 	if got := chip.Hints(80, hints...); got != want {
 		t.Fatalf("Hints(80) = %q, want %q", got, want)
 	}
-	if pages := (chip.HintBar{}).Pages(80, hints...); pages != 1 {
+	var bar chip.HintBar
+	if pages := bar.Pages(80, hints...); pages != 1 {
 		t.Fatalf("Pages(80) = %d, want 1 when everything fits", pages)
 	}
 	if plain := text.Plain(chip.Hints(80, hints...)); strings.Contains(plain, chip.PageKey) {
@@ -128,13 +130,15 @@ func TestHintBarPagesEveryHintReachable(t *testing.T) {
 
 	for _, width := range []int{70, 60, 40} {
 		held := make([]int, len(hints)) // pages each hint appeared on
-		pages := (chip.HintBar{}).Pages(width, hints...)
+		var bar chip.HintBar
+		pages := bar.Pages(width, hints...)
 		if pages < 2 {
 			t.Fatalf("width %d: Pages = %d, want at least 2", width, pages)
 		}
 
 		for page := 0; page < pages; page++ {
-			line := (chip.HintBar{Page: page}).Render(width, hints...)
+			bar.Page = page
+			line := bar.Render(width, hints...)
 			if got := text.Width(line); got > width {
 				t.Fatalf("width %d page %d: the bar is %d cells wide: %q", width, page, got, text.Plain(line))
 			}
@@ -225,18 +229,20 @@ func TestPagesIsOneWithoutHintsOrWidth(t *testing.T) {
 // page holds one hint and the paging chip is cut, never wrapped.
 func TestHintBarSurvivesOneCell(t *testing.T) {
 	hints := hintBar()
-	pages := (chip.HintBar{}).Pages(1, hints...)
+	var bar chip.HintBar
+	pages := bar.Pages(1, hints...)
 	if pages < 2 {
 		t.Fatalf("Pages(1) = %d, want one page per hint", pages)
 	}
 	for page := 0; page < pages; page++ {
-		line := (chip.HintBar{Page: page}).Render(1, hints...)
+		bar.Page = page
+		line := bar.Render(1, hints...)
 		if got := text.Width(line); got > 1 {
 			t.Fatalf("page %d at one cell is %d cells wide: %q", page, got, line)
 		}
 	}
 
-	bar := chip.HintBar{}
+	bar = chip.HintBar{}
 	bar.Next(1, hints...)
 	if bar.Page < 0 || bar.Page >= pages {
 		t.Fatalf("Next at one cell left Page = %d, want 0..%d", bar.Page, pages-1)

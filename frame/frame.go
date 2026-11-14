@@ -9,6 +9,7 @@ import (
 
 	"github.com/WilberC/tui-kit/text"
 	"github.com/WilberC/tui-kit/theme"
+	"github.com/WilberC/tui-kit/zone"
 )
 
 // The frame's glyphs. The joints are what let a rule meet the sides and the
@@ -66,8 +67,48 @@ func (f Frame) Bottom() string {
 
 // Row renders one interior line: the side borders, one cell of padding, the
 // content fitted to the width, one cell of padding.
+//
+// A line that is already a whole frame line of this width — a rule, or a row
+// another frame composed — is passed through unchanged, so no caller can frame the
+// same line twice: a double-framed rule loses its joints to an ellipsis and reads
+// as broken structure.
 func (f Frame) Row(content string) string {
+	if f.framed(content) {
+		return content
+	}
 	return theme.Border.Render(Vertical) + " " + text.Fit(content, f.ContentWidth()) + " " + theme.Border.Render(Vertical)
+}
+
+// framed reports whether line already is a whole line of this frame: exactly its
+// width, opening and closing with the frame's own glyphs. Content can never look
+// like one, because content is at most ContentWidth cells wide.
+func (f Frame) framed(line string) bool {
+	if f.Width <= 0 || text.Width(line) != f.Width {
+		return false
+	}
+	runes := []rune(text.Plain(line))
+	if len(runes) < 2 {
+		return false
+	}
+	return opensFrame(runes[0]) && closesFrame(runes[len(runes)-1])
+}
+
+// opensFrame and closesFrame are the glyphs a frame line may start and end with:
+// its sides, its corners and its joining tees.
+func opensFrame(glyph rune) bool {
+	switch string(glyph) {
+	case Vertical, LeftTee, TopLeft, BottomLeft:
+		return true
+	}
+	return false
+}
+
+func closesFrame(glyph rune) bool {
+	switch string(glyph) {
+	case Vertical, RightTee, TopRight, BottomRight:
+		return true
+	}
+	return false
 }
 
 // Rule renders a horizontal rule joined to the frame's sides, so sections
@@ -116,13 +157,25 @@ func Layout(f Frame, rows ...string) string {
 // the window is left at the left edge rather than clipped, so a caller that
 // measured its frame keeps the whole frame.
 func Float(block string, width, height int) string {
+	left, top := floatOffsets(block, width, height)
+	return place(block, left, top)
+}
+
+// floatOffsets is where Float puts a block: the cells above it and to its left,
+// which is also the offset a zone map has to move by to follow it into the pane.
+func floatOffsets(block string, width, height int) (left, top int) {
 	lines := strings.Split(block, "\n")
 	blockWidth := 0
 	for _, line := range lines {
 		blockWidth = max(blockWidth, text.Width(line))
 	}
-	left := max(0, (width-blockWidth)/2)
-	top := max(0, (height-len(lines))/2)
+	return max(0, (width-blockWidth)/2), max(0, (height-len(lines))/2)
+}
+
+// place writes a block at an offset, leaving the cells a window does not use
+// untouched: a block narrower than its window keeps its blank rows implicit.
+func place(block string, left, top int) string {
+	lines := strings.Split(block, "\n")
 
 	padding := strings.Repeat(" ", left)
 	var out strings.Builder
@@ -336,11 +389,78 @@ func (s Surface) Width(paneWidth int) int { return s.Size.ClampWidth(paneWidth) 
 // Height is the frame height for a pane height.
 func (s Surface) Height(paneHeight int) int { return s.Size.ClampHeight(paneHeight) }
 
+// At is the frame the surface draws for a pane: its own frame with the width
+// clamped to the size range. It is the frame a product must compose its rows and
+// rules with, and the one Row frames with.
+func (s Surface) At(paneWidth int) Frame {
+	f := s.Frame
+	f.Width = s.Width(paneWidth)
+	return f
+}
+
+// Row frames one row at the surface's clamped width: a header, a rule, a body row
+// or a footer line. Framing through the surface is what stops an unframed row
+// from slipping into the body, where it would be the one line without borders.
+func (s Surface) Row(paneWidth int, content string) string { return s.At(paneWidth).Row(content) }
+
+// Rows frames several rows at the surface's clamped width, in order.
+func (s Surface) Rows(paneWidth int, contents ...string) []string {
+	f := s.At(paneWidth)
+	rows := make([]string, len(contents))
+	for index, content := range contents {
+		rows[index] = f.Row(content)
+	}
+	return rows
+}
+
 // BodyRows is how many content rows the body gets for a pane height: the clamped
 // height minus the two borders, the Top and Bottom rows and the body's two
 // padding rows. A product pages or scrolls its content to fit this count.
 func (s Surface) BodyRows(paneHeight int) int {
-	return max(0, s.Height(paneHeight)-2-len(s.Top)-len(s.Bottom)-2*BodyPadding)
+	return max(0, s.Room(paneHeight)-2*BodyPadding)
+}
+
+// Room is how many lines the body region takes inside the frame, padding rows and
+// spare room included: the clamped height minus the borders and the Top and
+// Bottom rows it actually draws.
+func (s Surface) Room(paneHeight int) int {
+	top, bottom := s.edges(paneHeight)
+	return max(0, s.Height(paneHeight)-2-len(top)-len(bottom))
+}
+
+// BodyTop is the frame-content row of the body's first content line: the Top rows
+// and the body's own top padding row come before it. It is where a zone map
+// starts counting body rows (see BodyY and BottomY), which is the space
+// RenderZones and PopupZones translate for the product.
+func (s Surface) BodyTop() int { return len(s.Top) + BodyPadding }
+
+// BodyY is the frame-content row of one body content line, counted from zero.
+func (s Surface) BodyY(line int) int { return s.BodyTop() + line }
+
+// BottomY is the frame-content row of one Bottom line: the rows pinned above the
+// closing border, counted from zero. The body and its spare room come before
+// them, so the same line is the frame's last inner rows whatever the pane.
+func (s Surface) BottomY(paneHeight, line int) int {
+	top, _ := s.edges(paneHeight)
+	return len(top) + s.Room(paneHeight) + line
+}
+
+// ColumnX is the frame-content x of each column's first content cell, for a body
+// laid out by Grid: the border, one padding cell, the column, a padding cell, the
+// separating rule and one more padding cell before the next column. A row
+// registered in column i goes at ColumnX()[i], so the product never measures the
+// grid itself.
+func (s Surface) ColumnX() []int {
+	offsets := make([]int, len(s.Columns))
+	x := 0
+	for index, width := range s.Columns {
+		if index > 0 {
+			x += 3
+		}
+		offsets[index] = x
+		x += width
+	}
+	return offsets
 }
 
 // Render composes the frame at the clamped size: Top under the top border, the
@@ -349,31 +469,71 @@ func (s Surface) BodyRows(paneHeight int) int {
 // never below the footer. The body's first and last rows are blank; body rows
 // past the room are dropped, so a caller asks BodyRows and pages.
 func (s Surface) Render(paneWidth, paneHeight int, body []string) string {
-	f := s.Frame
-	f.Width = s.Width(paneWidth)
+	return s.RenderZones(paneWidth, paneHeight, body, nil)
+}
 
-	top, bottom := s.Top, s.Bottom
-	interior := max(0, s.Height(paneHeight)-2)
-	if len(top)+len(bottom) > interior {
-		// A pane too short for both edges: the footer keeps the last rows, the
-		// header keeps whatever is left.
-		if len(bottom) > interior {
-			bottom = bottom[len(bottom)-interior:]
-		}
-		top = top[:max(0, interior-len(bottom))]
-	}
-
-	rows := make([]string, 0, interior)
-	rows = append(rows, top...)
-	rows = append(rows, bodyBlock(f, s.Columns, body, interior-len(top)-len(bottom))...)
-	rows = append(rows, bottom...)
+// RenderZones is Render with a zone map: the map holds the clickable elements in
+// frame-content coordinates — x from the first content cell, y from the first row
+// under the top border, which is what BodyY, BottomY and ColumnX count in — and
+// the surface rewrites it into the pane's own coordinates before returning.
+//
+// Everything the surface did not draw is dropped, and a zone it half drew keeps
+// only the cells the user can see, so a hit test can never answer for a cell
+// outside the frame. Build the map for this render pass: the surface moves it in
+// place, so rendering the same map twice moves it twice.
+func (s Surface) RenderZones(paneWidth, paneHeight int, body []string, zones *zone.Map) string {
+	f, rows, box := s.compose(paneWidth, paneHeight, body)
+	zones.Offset(1+framePad, 1)
+	zones.Clip(box)
 	return Layout(f, rows...)
 }
 
 // Popup renders the surface and centres it in the pane, so a frame narrower or
 // shorter than its pane sits in the middle of it instead of hugging its top.
 func (s Surface) Popup(paneWidth, paneHeight int, body []string) string {
-	return Float(s.Render(paneWidth, paneHeight, body), paneWidth, paneHeight)
+	return s.PopupZones(paneWidth, paneHeight, body, nil)
+}
+
+// PopupZones is Popup with a zone map, translated from frame-content coordinates
+// into the centred pane's, so a click on the row the user sees answers even after
+// Float moved the frame. The opening height of the frame is not something a
+// product measures.
+func (s Surface) PopupZones(paneWidth, paneHeight int, body []string, zones *zone.Map) string {
+	view := s.RenderZones(paneWidth, paneHeight, body, zones)
+	left, top := floatOffsets(view, paneWidth, paneHeight)
+	zones.Offset(left, top)
+	return place(view, left, top)
+}
+
+// compose builds what Render draws: the frame at its clamped width, its interior
+// rows, and the content box a zone map is clipped to in frame-local coordinates.
+func (s Surface) compose(paneWidth, paneHeight int, body []string) (Frame, []string, zone.Rect) {
+	f := s.At(paneWidth)
+	top, bottom := s.edges(paneHeight)
+	interior := max(0, s.Height(paneHeight)-2)
+
+	rows := make([]string, 0, interior)
+	rows = append(rows, top...)
+	rows = append(rows, bodyBlock(f, s.Columns, body, interior-len(top)-len(bottom))...)
+	rows = append(rows, bottom...)
+
+	box := zone.Rect{X: 1 + framePad, Y: 1, W: f.ContentWidth(), H: interior}
+	return f, rows, box
+}
+
+// edges is the Top and Bottom rows the frame actually draws. A pane too short for
+// both keeps the footer's last rows, because the keys are what the user needs,
+// and gives the header whatever is left.
+func (s Surface) edges(paneHeight int) (top, bottom []string) {
+	top, bottom = s.Top, s.Bottom
+	interior := max(0, s.Height(paneHeight)-2)
+	if len(top)+len(bottom) <= interior {
+		return top, bottom
+	}
+	if len(bottom) > interior {
+		bottom = bottom[len(bottom)-interior:]
+	}
+	return top[:max(0, interior-len(bottom))], bottom
 }
 
 // bodyBlock builds the body's rows: a blank row, the content, the room that is

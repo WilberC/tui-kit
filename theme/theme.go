@@ -35,6 +35,10 @@ const (
 	ColorChip lipgloss.Color = "#2f3549"
 	// ColorSelection is the tint a selected row gains instead of a painted bar.
 	ColorSelection lipgloss.Color = "#283457"
+	// ColorHover is the tint a hovered row gains: one step above the terminal's
+	// own background and still fainter than the selection, so a hover previews
+	// the selection instead of competing with it.
+	ColorHover lipgloss.Color = "#21273f"
 	// ColorChipOnSelection is the chip surface one step brighter, for a token
 	// that sits on the tint.
 	ColorChipOnSelection lipgloss.Color = "#3d59a1"
@@ -44,6 +48,18 @@ const (
 	// on the tint without competing with the row's facts.
 	ColorGuideOnSelection lipgloss.Color = "#5f6b96"
 )
+
+// Palette is every role colour in one slice, for a tool that must reproduce the
+// palette exactly — a capture, a preview, a dump — instead of naming the roles one
+// by one. It is the list DESIGN.md §1 documents.
+func Palette() []lipgloss.Color {
+	return []lipgloss.Color{
+		ColorText, ColorMuted, ColorGuide, ColorBorder, ColorAccent,
+		ColorGold, ColorTeal, ColorGreen, ColorRed, ColorChip,
+		ColorSelection, ColorHover, ColorChipOnSelection,
+		ColorMutedOnSelection, ColorGuideOnSelection,
+	}
+}
 
 // Roles, as styles a view composes with. Text is prose, Muted is explanation,
 // Quiet is structure, Border is the frame, Accent is the product's voice, Gold
@@ -108,6 +124,27 @@ var (
 // a selected row as off it.
 func OnSelection(role lipgloss.Style) lipgloss.Style {
 	return role.Background(ColorSelection)
+}
+
+// The hover surface. A hovered row is where the pointer is, not where the user
+// is: it wears the selection's composition in a fainter tint, so it reads as a
+// preview of what a click would select. It never carries the accent edge.
+var (
+	// HoverBG tints a hovered row, one step above the panel and fainter than the
+	// selection.
+	HoverBG = lipgloss.NewStyle().Background(ColorHover)
+	// TextOnHover is a hovered row's primary text.
+	TextOnHover = HoverBG.Foreground(ColorText).Bold(true)
+	// MutedOnHover is every secondary fact on the hover tint.
+	MutedOnHover = HoverBG.Foreground(ColorMuted)
+	// GuideOnHover is the tree structure on the hover tint.
+	GuideOnHover = HoverBG.Foreground(ColorGuide)
+)
+
+// OnHover lifts a role onto the hover tint, the way OnSelection lifts it onto the
+// selection: state keeps its meaning while the pointer is over it.
+func OnHover(role lipgloss.Style) lipgloss.Style {
+	return role.Background(ColorHover)
 }
 
 func chipSurface(fg lipgloss.Color) lipgloss.Style {

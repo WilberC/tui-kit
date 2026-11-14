@@ -10,11 +10,13 @@ package chip
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/WilberC/tui-kit/text"
 	"github.com/WilberC/tui-kit/theme"
+	"github.com/WilberC/tui-kit/zone"
 )
 
 // Gutter is what separates two chip pairs in a legend or a hint bar: two plain
@@ -67,13 +69,37 @@ func UnsetCell(role lipgloss.Style, label string, width int) string {
 type Hint struct {
 	Key   string
 	Label string
+	// Slab is the chip surface the key renders on. A nil Slab is the bar's own
+	// surface, theme.ChipText; it is set for the one hint that must keep a meaning
+	// of its own — the gold y of a confirmation — so such a hint never repaints
+	// its neighbours.
+	Slab *lipgloss.Style
 }
+
+// slab is the chip surface the hint's key renders on.
+func (h Hint) slab() lipgloss.Style {
+	if h.Slab == nil {
+		return theme.ChipText
+	}
+	return *h.Slab
+}
+
+// pair is the hint as the bar draws it: the slab, one plain space, the label.
+func (h Hint) pair() string { return Pair(h.slab(), h.Key, h.Label) }
 
 // PageKey is the key that moves a hint bar to its next page. It is a named
 // constant so every product displays the same key, and it is a non-printable
 // one, so it never collides with the filter a key bar's screen reads. The kit
 // renders it; the product wires the handler.
 const PageKey = "tab"
+
+// PageZone is the well-known zone id of the paging chip. A click on it is the
+// same action as PageKey: the product looks the id up and moves the bar on.
+const PageZone = "chip:page"
+
+// HintZone is the zone id of one hint's chip in the hint bar, so a product that
+// lets a hint be clicked looks it up by its key.
+func HintZone(key string) string { return "chip:" + key }
 
 // maxPagingRounds bounds the search for a stable page count: the paging chip's
 // label grows with the number of pages, so the reserve settles by iteration.
@@ -87,6 +113,40 @@ type HintBar struct {
 	// back into range, so a caller that keeps its own counter never renders an
 	// empty bar.
 	Page int
+
+	// seen is the identity of the hint set the bar last drew, and known says
+	// whether it has drawn one at all: the first set keeps the page a caller asked
+	// for (a HintBar{Page: 1}), and a set that differs from the one before starts
+	// over on page 0.
+	seen  string
+	known bool
+}
+
+// sync records the hint set the bar is drawing and starts a new set on its first
+// page. A screen whose hints grow or shrink (a confirmation gains its y, a key
+// disappears) therefore needs no reset of its own: the bar notices it.
+func (b *HintBar) sync(hints []Hint) {
+	key := setKey(hints)
+	if b.known && key == b.seen {
+		return
+	}
+	if b.known {
+		b.Page = 0
+	}
+	b.seen, b.known = key, true
+}
+
+// setKey names a set of hints, so the bar compares the set and not the width it
+// happens to be drawn at or the page it is on.
+func setKey(hints []Hint) string {
+	var key strings.Builder
+	for _, hint := range hints {
+		key.WriteString(hint.Key)
+		key.WriteByte(0)
+		key.WriteString(hint.Label)
+		key.WriteByte(0)
+	}
+	return key.String()
 }
 
 // Render draws the page the bar shows: as many hints as fit, whole and in
@@ -96,42 +156,101 @@ type HintBar struct {
 // never exceeds width. When they all fit, the bar is one line with no paging
 // chip, exactly as Hints always rendered it. A hint wider than the bar is
 // clipped with the ellipsis; a hint is never dropped without the chip.
-func (b HintBar) Render(width int, hints ...Hint) string {
+func (b *HintBar) Render(width int, hints ...Hint) string {
+	return b.RenderZones(nil, 0, 0, width, hints...)
+}
+
+// RenderZones is Render with the bar recorded in a zone map: each hint's slab
+// under HintZone(key) and the paging chip's slab under PageZone, at (x, y) in the
+// map's coordinates. A product answers a click from the cell alone, without
+// measuring the bar, and a click on the paging chip is the same action as
+// PageKey.
+func (b *HintBar) RenderZones(zones *zone.Map, x, y, width int, hints ...Hint) string {
+	if b == nil {
+		return ""
+	}
+	b.sync(hints)
 	if width <= 0 || len(hints) == 0 {
 		return ""
 	}
 
-	items := make([]string, len(hints))
-	for index, hint := range hints {
-		items[index] = Pair(theme.ChipText, hint.Key, hint.Label)
+	drawn := b.layout(width, hints)
+	for _, chip := range drawn.chips {
+		zones.Add(chip.id, x+chip.x, y, min(chip.w, width-chip.x), 1)
 	}
+	return text.Clip(drawn.line, width)
+}
 
-	pages := paginate(width, items)
+// bar is the line the bar draws and the chips it drew in it, so a render can
+// record the cells a click can land on.
+type bar struct {
+	line  string
+	chips []drawnChip
+}
+
+// drawnChip is one chip of the bar: what a click there means, and where the bar
+// drew it.
+type drawnChip struct {
+	id   string
+	x, w int
+}
+
+// layout builds the page the bar shows, chip by chip, so the zones and the line
+// cannot disagree about an x.
+func (b *HintBar) layout(width int, hints []Hint) bar {
+	rendered := pairs(hints)
+	pages := paginate(width, rendered)
 	page := pageIndex(b.Page, len(pages))
-	line := join(indexes(pages[page], items))
-	if len(pages) > 1 {
-		line = join([]string{line, Pair(theme.ChipText, PageKey, paging(page, len(pages)))})
+
+	out := bar{}
+	for position, index := range pages[page] {
+		if position > 0 {
+			out.line += Gutter
+		}
+		slab := Chip(hints[index].slab(), hints[index].Key)
+		out.chips = append(out.chips, drawnChip{id: HintZone(hints[index].Key), x: text.Width(out.line), w: text.Width(slab)})
+		out.line += rendered[index]
 	}
-	return text.Clip(line, width)
+	if len(pages) > 1 {
+		if len(pages[page]) > 0 {
+			out.line += Gutter
+		}
+		out.chips = append(out.chips, drawnChip{
+			id: PageZone,
+			x:  text.Width(out.line),
+			w:  text.Width(Chip(theme.ChipText, PageKey)),
+		})
+		out.line += Pair(theme.ChipText, PageKey, paging(page, len(pages)))
+	}
+	return out
+}
+
+// pairs renders every hint of the set, so paging and drawing measure the same
+// strings.
+func pairs(hints []Hint) []string {
+	out := make([]string, len(hints))
+	for index, hint := range hints {
+		out[index] = hint.pair()
+	}
+	return out
 }
 
 // Pages is how many pages the bar needs at this width: one when everything fits,
 // and always at least one, so a caller may use it as a modulus.
-func (b HintBar) Pages(width int, hints ...Hint) int {
+func (b *HintBar) Pages(width int, hints ...Hint) int {
 	if width <= 0 || len(hints) == 0 {
 		return 1
 	}
-
-	items := make([]string, len(hints))
-	for index, hint := range hints {
-		items[index] = Pair(theme.ChipText, hint.Key, hint.Label)
-	}
-	return len(paginate(width, items))
+	return len(paginate(width, pairs(hints)))
 }
 
 // Next moves the bar to its next page and wraps from the last page back to page
 // 0. A bar that fits stays on page 0: there is nothing to page to.
 func (b *HintBar) Next(width int, hints ...Hint) {
+	if b == nil {
+		return
+	}
+	b.sync(hints)
 	pages := b.Pages(width, hints...)
 	b.Page = (pageIndex(b.Page, pages) + 1) % pages
 }
@@ -139,7 +258,10 @@ func (b *HintBar) Next(width int, hints ...Hint) {
 // Hints renders the first page of a hint bar. It is HintBar{}.Render, kept so
 // the callers that show one page keep compiling; a product that wires PageKey
 // should hold a HintBar and move it with Next.
-func Hints(width int, hints ...Hint) string { return HintBar{}.Render(width, hints...) }
+func Hints(width int, hints ...Hint) string {
+	var bar HintBar
+	return bar.Render(width, hints...)
+}
 
 // paginate splits rendered hints into consecutive pages. When the whole bar fits
 // it is one page with no paging chip; otherwise each page reserves the room the

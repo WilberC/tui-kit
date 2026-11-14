@@ -14,7 +14,7 @@ progress), and **the grid** (nothing wraps, nothing floats, no column drifts).
 ## 1. Palette
 
 Tokyo Night, roles only. No screen names a colour; a role is what a row asks for.
-Fourteen roles, and they are all of them.
+Fifteen roles, and they are all of them.
 
 | Role | Value | Means | Never |
 | --- | --- | --- | --- |
@@ -29,6 +29,7 @@ Fourteen roles, and they are all of them.
 | red | `#f7768e` | Failure, and nothing else. One red fact per screen at most. | Used for emphasis. |
 | chip bg | `#2f3549` | The slab a token sits on. | Painted behind prose. |
 | selection bg | `#283457` | The tint of the selected row. | Painted as a solid bar. |
+| hover bg | `#21273f` | The tint of the row under the pointer: one step above the terminal background, still fainter than the selection. | Used for anything but hover. |
 | chip on selection | `#3d59a1` | The slab of a token sitting on the tint: one step brighter. | Reused off the tint. |
 | muted on selection | `#737aa2` | Muted facts on the tint. | Used off the tint. |
 | guide on selection | `#5f6b96` | The tree guide on the tint. | Used off the tint. |
@@ -62,6 +63,10 @@ Top to bottom, every surface is the same seven parts:
 ╰─────────────────────────────────────────────────────╯   bottom border
 ```
 
+The same surface, captured from the kit at 140x19:
+
+![The frame anatomy: title in the border, header, rule, filter with its legend, column rule, two columns of groups, closing rule, detail line and hint bar](docs/gallery/frame-anatomy.png)
+
 Rules of the anatomy:
 
 - **The title lives in the top border**, never as a row. It is
@@ -89,6 +94,10 @@ A chip is a **padded slab**, not a bracketed word:
  x       ✓    bold label, one cell of padding each side, on #2f3549
 ```
 
+The chips, captured at 80x19:
+
+![Chips: a bare slab, a pair, a legend, one shared chip column, the dash of an entry without a key and a chip on the tint](docs/gallery/chips.png)
+
 Rules:
 
 - The background carries the padding: `slab.Render(" " + label + " ")`.
@@ -115,6 +124,18 @@ Rules:
 - When everything fits, the bar is one line with **no paging chip** and the key
   does nothing. The bar never wraps and never scrolls mid-hint: the only thing
   ever cut is one hint wider than the whole bar, and that cut ends with `…`.
+- **The bar resets itself.** A hint bar recognises the set it drew, so a screen
+  whose hints change (a confirmation gains its gold `y`) starts again on page 0
+  without carrying a reset of its own; `HintBar.Page` still names a page when a
+  product wants one.
+- **One hint may carry its own slab** (`Hint.Slab`), so the gold `y` of a
+  confirmation keeps its meaning while its neighbours keep the default.
+
+Page 1 and page 2 of the same bar at 60 cells:
+
+| Page 1 | Page 2 |
+| --- | --- |
+| ![The hint bar on its first page: three hints and the paging chip tab more 1/3](docs/gallery/hints-page-1.png) | ![The hint bar on its second page: the fourth hint and the paging chip tab more 2/3](docs/gallery/hints-page-2.png) |
 
 ## 4. Selection
 
@@ -137,8 +158,18 @@ The selection is a **tint**, not a painted bar:
 - A chip on the selected row uses `chip on selection`, one step brighter, so the
   token still reads as a token on the darker background.
 - **Exactly one row** carries the tint on a screen.
+- **The row under the pointer wears a fainter tint** (`theme.HoverBG`), never the
+  selection's: it is a preview of what a click would select. Selection wins over
+  hover, and a hovered row carries no `▌` and no `◆` (§11).
+
+Selection and hover, captured at 80x14 — the selected row first, the hovered row
+directly under it:
+
+![List rows: the selected row with its tint and accent edge, the hovered row in a fainter tint, then panel rows with the gold default marker and the live and failed states](docs/gallery/rows.png)
 - The gold `◆` is for state that outlives the selection (the default item); it is
-  quieter than the selection and is not a second cursor.
+  quieter than the selection and is not a second cursor. It **follows the row's
+  facts** (`list.Mark`), after two cells of the row's own background, never before
+  the chip column: a marked row must not move the columns its neighbours use.
 
 ## 5. Rhythm and spacing
 
@@ -195,6 +226,14 @@ exceeds the frame.
   decides where a column starts.
 - A body shorter than its content **pages** rather than squeezing: the header
   names the page (`page 1 / 3`), and the selection decides which page is shown.
+- A body the pane cannot hold at all is **cut below `BodyRows`, never squeezed**,
+  and a group header is never left with no entry under it.
+
+Three columns, captured at 160x13: the column rules grow out of the frame, the
+vertical rules run unbroken through the padding and spare rows, and each column
+keeps its own chip width.
+
+![A three-column body: joints on the column rules, vertical rules through the blank rows, one chip column per column](docs/gallery/columns.png)
 - A hint, a fact or a chip is dropped **whole**. The only thing that is ever cut
   is a single string, and a cut ends with `…`. A hint is never dropped at all:
   the hint bar pages instead.
@@ -286,6 +325,10 @@ out, and never draw empty groups:
 describes the work; the caller owns the tick, so the screen costs nothing while
 nothing is happening. Never a full-screen "loading" placeholder.
 
+| Empty | Zero match | Loading |
+| --- | --- | --- |
+| ![The empty state: a centred message and the one key that changes it](docs/gallery/empty.png) | ![The zero-match state: the query, the message naming it and the way out](docs/gallery/zero-match.png) | ![The loading state: a teal tick on the line that describes the work](docs/gallery/loading.png) |
+
 ## 10. Anti-patterns we fixed
 
 These are real regressions from the two products. Do not bring them back.
@@ -312,8 +355,138 @@ These are real regressions from the two products. Do not bring them back.
 | A body with no bottom padding | Content touched the rule and the section above read as cut off. | One blank row at the top of the body and one at the bottom, always. |
 | Body padding rows drawn without the column separators | The column rule broke into a lone tick under `┬`, a gap, the rule resuming on the content, and another tick above `┴`. | Blank body rows are grid rows: same widths, same separators. |
 | Empty groups drawn under a zero-match filter | The screen looked broken rather than empty. | One calm message and the way out. |
+| Loose text as a click target | Every word became a maybe-link, and the screen stopped saying what was actionable. | Only a chip and a row are clickable; the kit records zones for nothing else. |
+| A destructive action on a single click | One slipped press deleted the thing the user was reading. | A click selects; enter or a double click runs, and a destructive action asks first. |
+| A mouse-only feature | A keyboard user lost an action that had no key. | Every click maps to a key: mouse-only is a bug. |
+| A hover as strong as the selection | The pointer competed with the cursor and the row the user chose disappeared. | A fainter tint, selection wins, no accent edge, no gold mark. |
+| Hand-rolled text selection in a screen that captures the mouse | A second, worse editor: no word boundaries, no scrollback, its own clipboard. | Let the terminal keep the drag; copy one value with one OSC 52 key. |
 
-## 11. Migration map
+## 11. Mouse
+
+The mouse is a second way to reach the same actions, never a second interface: a
+screen that only works with a pointer is broken.
+
+Rules:
+
+- **Only a chip and a row are clickable.** Loose text, a rule, a header, a title
+  and a border are not targets, and the kit records no zone for them, so a
+  product cannot wire one by accident.
+- **The kit records where it drew them, the product acts.** `zone.Map` collects
+  each element's rectangle in the frame-content coordinates the surface names
+  (`frame.Surface.BodyY`, `BottomY`, `ColumnX`; `list.Entry` and
+  `chip.HintBar.RenderZones` register themselves), and `RenderZones` /
+  `PopupZones` translate the map into the pane's own cells — centring, border,
+  header rows, body padding and column offsets included — dropping anything the
+  surface did not draw. The product asks `Hit(x, y)` and gets an id.
+- **A click selects; it never runs.** Selecting is reversible and is what a
+  pointer is good at. **Enter or a double click runs** the selection.
+- **A destructive action never fires on one click.** Killing a session, deleting
+  a workspace or overwriting a file has no single-click path: it asks, and its
+  confirmation keeps a keyboard answer.
+- **The wheel moves the body**: it scrolls the list, or moves the selection when
+  the whole list is already visible. `frame.Surface.BodyRows` is the row count
+  both the drawing and the scrolling use.
+- **Hover is a preview of the selection** in a fainter tint (§4). Selection wins
+  over hover, and a hovered row carries no `▌` and no `◆`.
+- **Keyboard parity, always.** A click is the cursor keys, a run is `enter`, and a
+  click on the paging chip is `chip.PageKey`. The hint bar says so.
+- **Shift+drag still belongs to the terminal.** A program that captures the mouse
+  can leave the drag to it, but whether plain shift+drag selection and OSC 52
+  pass-through work inside herdr is a product-side check; it is not verified in
+  this repository.
+
+The kit has no Bubbletea dependency, on purpose: a consumer of `theme`, `frame`
+and `chip` should not inherit an event loop, and the kit does not own the tick,
+the keymap or the model. The translation is ten lines in the product's update
+loop:
+
+```go
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if click, ok := msg.(tea.MouseMsg); ok {
+		if id, hit := m.zones.Hit(click.X, click.Y); hit {
+			switch {
+			case id == chip.PageZone: // a click on the paging chip is tab
+				m.bar.Next(m.width, m.hints()...)
+			case strings.HasPrefix(id, "row:"):
+				m.cursor = rowIndex(id) // a click selects; enter runs
+			}
+		}
+	}
+	...
+}
+```
+
+A product that does not want the mouse passes `nil` for the map and every kit
+helper records nothing.
+
+## 12. Copying a value
+
+- **A TUI that captures the mouse does not reimplement text selection.** The
+  terminal handed the drag to the program, so a hand-rolled selection is a
+  second, worse editor: no word boundaries, no scrollback, and a clipboard of its
+  own. gentle-shell implements one because copying a chat transcript is what that
+  program is for; every other screen lets the terminal keep the drag.
+- **When a product needs one specific value copied**, it offers exactly one key
+  for that value and writes it with OSC 52 (`clipboard.OSC52`). The value is the
+  thing the cursor is on — the selected session's socket, the command, the path —
+  never a region, and a hint names the key (`chip.Hint{Key: "y", Label: "copy
+  path"}`).
+- **A gold slab keeps the confirmation readable**: `chip.Hint{Key: "y", Label:
+  "copy", Slab: &theme.ChipGold}`.
+- **OSC 52 is a request, not a guarantee.** The terminal may ignore it, cap the
+  payload at a few kilobytes or hand it to a clipboard tool. Keep the copied value
+  short, and say what was copied on the detail line.
+- Inside herdr, plain shift+drag selection and OSC 52 pass-through are
+  product-side checks and are **unverified** here.
+
+## 13. Gallery
+
+`docs/gallery/` holds every state above, captured from the real code. One command
+regenerates the whole gallery:
+
+```sh
+go run ./examples/gallery            # writes docs/gallery/*.png
+go run ./examples/gallery -only rows # one state, while working on it
+```
+
+It renders each state at a fixed size with the truecolor profile, hands the ANSI
+to `freeze` (`--font.size 10 --theme tokyonight`, no window chrome, no shadow) and
+re-encodes the PNG as a palette, so an image only changes when the look changes
+and the whole gallery stays under half a megabyte. The three demo captures are
+produced by running `examples/demo` itself, never by a copy of it.
+
+Two rules keep the images honest:
+
+- **A capture is the smallest frame that shows its state with the standard
+  padding.** The guide must not show the empty body §8 warns about, so the
+  non-demo states are drawn without the size range (the pane *is* the frame) and
+  their heights are the borders, the edges, the content and the two padding rows.
+  A product still draws within `frame.Recommended`.
+- **The palette in an image is the palette in §1.** The rasterizer rounds a channel
+  by a step now and then, so a colour that close to a role is snapped back to the
+  role (`theme.Palette`) before the palette is built: a captured slab is
+  `#2f3549`, not `#2f3449`.
+
+| Image | Shows |
+| --- | --- |
+| [frame-anatomy.png](docs/gallery/frame-anatomy.png) | §2, the whole surface at 140x19 |
+| [columns.png](docs/gallery/columns.png) | §7, a three-column body at 160x13 |
+| [chips.png](docs/gallery/chips.png) | §3, the token surface at 80x19 |
+| [rows.png](docs/gallery/rows.png) | §4 and §11, selection and hover side by side at 80x14 |
+| [hints-page-1.png](docs/gallery/hints-page-1.png), [hints-page-2.png](docs/gallery/hints-page-2.png) | §3, the paged hint bar at 60x10 |
+| [empty.png](docs/gallery/empty.png), [zero-match.png](docs/gallery/zero-match.png), [loading.png](docs/gallery/loading.png) | §9, the three states |
+| [demo-180x50.png](docs/gallery/demo-180x50.png), [demo-140x40.png](docs/gallery/demo-140x40.png), [demo-80x24.png](docs/gallery/demo-80x24.png) | the demo at its three captured sizes |
+
+The demo at 140x40:
+
+![The demo popup at 140x40: two columns, a selected row, a hovered row, unset entries, the footer and the hint bar](docs/gallery/demo-140x40.png)
+
+The same demo at 80x24, where the hint bar pages behind `tab` and the body stops
+at `BodyRows`:
+
+![The demo popup at 80x24: one column, the paged hint bar with tab more 1 of 2, and the rows the body had room for](docs/gallery/demo-80x24.png)
+
+## 14. Migration map
 
 The private copies these packages were extracted from, for the screens that are
 still on them:

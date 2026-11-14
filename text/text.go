@@ -137,6 +137,24 @@ func Join(left, right string, width int) string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
+// JoinDropRight places left at the start and right at the end of width cells,
+// like Join, and gives up the right side first: when both do not fit, right is
+// dropped whole and left stays readable. It is the join for a line whose right
+// side is a legend that may give way before the title it explains. Only when the
+// left side alone does not fit is it clipped, and that cut ends with an ellipsis.
+func JoinDropRight(left, right string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if right == "" {
+		return Clip(left, width)
+	}
+	if gap := width - Width(left) - Width(right); gap >= 0 {
+		return left + strings.Repeat(" ", gap) + right
+	}
+	return Clip(left, width)
+}
+
 // Center places s in the middle of width cells.
 func Center(s string, width int) string {
 	s = Clip(s, width)
