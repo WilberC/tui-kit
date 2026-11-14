@@ -37,7 +37,7 @@ herdr-suite and herdr-utils, extracted from their tested code, plus the design g
 | T11 | S12 (herdr-suite adopts v0.4.0) | worker | herdr-suite 77bacb3 |
 | T12 | S12 (herdr-utils adopts v0.4.0) | worker | herdr-utils db76c24 |
 | T13 | S13 (kit v0.4.1: nested rows with zones, single-span trailing) | worker | v0.4.1 |
-| T14 | S13 (herdr-suite adopts v0.4.1) | worker | pending |
+| T14 | S13 (herdr-suite adopts v0.4.1) | worker | herdr-suite done |
 
 ## Log
 
