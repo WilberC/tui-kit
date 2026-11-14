@@ -44,16 +44,29 @@ func main() {
 	cell := chip.Cell(roles.Chip, "ctrl+k", 8)
 	row := list.ChipRow(roles, true, cell, roles.Name.Render("Open the command bar"), f.ContentWidth())
 
+	// The bar keeps its own page; tab (chip.PageKey) advances it and wraps.
+	var bar chip.HintBar
+	hints := bar.Render(f.ContentWidth(),
+		chip.Hint{Key: "enter", Label: "run"},
+		chip.Hint{Key: "esc", Label: "close"},
+	)
+
 	fmt.Print(frame.Layout(f,
 		f.Row(theme.Muted.Render("3 bindings")),
 		f.Rule(),
 		f.Row(list.Section("keys", 3)),
 		f.Row(row),
 		f.Row(frame.Footer(theme.AccentBold.Render("Command bar"), "3 / 3 shown", f.ContentWidth())),
-		f.Row(chip.Hints(f.ContentWidth(), chip.Hint{Key: "esc", Label: "close"})),
+		f.Row(hints),
 	))
 }
 ```
+
+Hint bars page instead of hiding what does not fit: `HintBar.Render` draws one
+page, `HintBar.Pages` says how many there are, and `HintBar.Next` moves forward
+and wraps. In the key handler, `case chip.PageKey:` calls `bar.Next(width, hints...)`
+and returns — the kit renders the key, the product wires it. `chip.Hints` still
+works and is exactly page 0.
 
 `examples/demo` renders a full popup with groups, chips, a tinted row and a
 footer at any size, so the look can be checked by eye:
@@ -69,8 +82,8 @@ go run ./examples/demo -w 180 -o /tmp/demo.ansi   # piped, keeps truecolor
 | --- | --- | --- |
 | `theme/` | The Tokyo Night palette, the role styles, and the few compositions that are pure role arithmetic (`Dot`, `Label`, `OnSelection`). The only place a hex value may live. | lipgloss |
 | `text/` | Cell widths, clipping and ellipsis, `Fit`/`PadLeft`/`Join`/`Center`, short paths, relative ages, the typographic glyphs. | x/ansi |
-| `frame/` | `Frame` (titled border, rules, rows), `Layout`, `Float`, `Footer`, and the joined column grid (`ColumnRule`, `ColumnWidths`, `Grid`). | theme, text |
-| `chip/` | `Chip`, `Pair`, `Cell`/`UnsetCell` chip columns, `Legend`, and the `Hints` bar that drops whole hints instead of wrapping. | theme, text |
+| `frame/` | `Frame` (titled border, rules, rows), `Layout`, `Float`, `Footer`, `Surface`/`Size` for a bounded, footer-pinned popup (`Recommended` bounds, `BodyRows`, `Columns`, `BlankRow`), and the joined column grid (`ColumnRule`, `ColumnWidths`, `Grid`). | theme, text |
+| `chip/` | `Chip`, `Pair`, `Cell`/`UnsetCell` chip columns, `Legend`, and the `HintBar` that pages hints behind `tab` instead of hiding them (`Hints` is its page-0 render). | theme, text |
 | `list/` | `Roles`/`RowRoles`, the tree `Guide`, `Row`, `SelectedRow`, `ChipRow`, `Section`, agent states. | theme, text |
 | `spinner/` | The four-frame work-in-progress tick; the caller owns the tick. | theme |
 
@@ -96,6 +109,9 @@ Screenshots for the visual check:
 mkdir -p /tmp/tui-kit-shots
 go run ./examples/demo -w 140 -h 40 -o /tmp/tui-kit-shots/demo-140.ansi
 freeze -l ansi --theme tokyonight -o /tmp/tui-kit-shots/demo-140.png /tmp/tui-kit-shots/demo-140.ansi
+# a pane taller than the frame: the footer stays pinned inside the clamped frame
+go run ./examples/demo -w 140 -h 50 -o /tmp/tui-kit-shots/demo-140x50.ansi
+freeze -l ansi --theme tokyonight -o /tmp/tui-kit-shots/demo-140x50.png /tmp/tui-kit-shots/demo-140x50.ansi
 ```
 
 ## License

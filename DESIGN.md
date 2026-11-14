@@ -100,11 +100,21 @@ Rules:
   (`chip.UnsetCell`). A group of such entries must not read as a wall of empty
   boxes — and must never claim a key it does not have (`enter` is not "the key"
   of a discovered action).
-- Hints are chips too (`chip.Hints`): the key is a slab, the label is muted
-  prose, items are separated by **two plain spaces**. A hint that does not fit is
-  **dropped whole**, from the end; the bar never wraps. The first hint is never
-  dropped — at an extreme width it is clipped to the bar, because a footer with
-  no keys at all is worse than one cut label.
+- Hints are chips too (`chip.HintBar`): the key is a slab, the label is muted
+  prose, items are separated by **two plain spaces**, and a hint is **never** cut
+  into a second line.
+- **The hint bar pages; it never hides a hint.** When the hints do not fit, the
+  bar shows the whole hints the width holds, in declaration order (the order *is*
+  the priority), and ends with the **paging chip**: the `tab` slab, then the
+  muted position `more 1/2` — current page, then page count. The paging chip is
+  **part of the width budget**, so no line ever exceeds the frame.
+- The paging key is `chip.PageKey` (`tab`) and it is **non-printable**, so it
+  never collides with the filter the screen's key bar reads. `tab` moves to the
+  next page and **wraps** from the last page back to the first. The kit renders
+  the key; each product wires the handler.
+- When everything fits, the bar is one line with **no paging chip** and the key
+  does nothing. The bar never wraps and never scrolls mid-hint: the only thing
+  ever cut is one hint wider than the whole bar, and that cut ends with `…`.
 
 ## 4. Selection
 
@@ -176,7 +186,7 @@ exceeds the frame.
 | --- | --- | --- |
 | 180 | 3 when the surface holds three groups | nothing; the header may carry the page |
 | 140 | 2 | a fourth column is never invented |
-| 80 | 1 | the legend, then the longest hints; the first hint always survives |
+| 80 | 1 | the legend, then the hint bar pages behind `tab`; the first hint always survives |
 
 - Column count follows the inner width (`frame.ColumnCount`): 3 from 148 inner
   cells, 2 from 98, 1 below — and never more than the surface has groups.
@@ -186,9 +196,67 @@ exceeds the frame.
 - A body shorter than its content **pages** rather than squeezing: the header
   names the page (`page 1 / 3`), and the selection decides which page is shown.
 - A hint, a fact or a chip is dropped **whole**. The only thing that is ever cut
-  is a single string, and a cut ends with `…`.
+  is a single string, and a cut ends with `…`. A hint is never dropped at all:
+  the hint bar pages instead.
 
-## 8. States
+## 8. Size and anchoring
+
+A frame is not the height of its content. It is the height of its pane, bounded,
+and it pins its footer to its own bottom edge.
+
+```
+pane, 50 rows tall                 frame, 40 rows tall (MaxHeight)
+
+  (centred: 5 blank rows)          header
+                                   rule
+        ╭────────────────╮         filter + legend
+        │ header         │         column rule
+        │                │         ── one blank row ──
+        │ body           │         body
+        │                │         body, spare room below it
+        │                │         ── one blank row ──
+        │ footer         │         column rule
+        ╰────────────────╯         detail line
+  (centred: 5 blank rows)          hint bar
+```
+
+Rules:
+
+- **Size is a range, not a wish** (`frame.Size`: MinWidth, MaxWidth, MinHeight,
+  MaxHeight). The frame's width and height are the pane clamped to that range. A
+  pane smaller than the minimum wins: a frame never exceeds the pane showing it,
+  because overflowing is worse than cramped.
+- **The height is the clamped height, never the content's height.** A screen with
+  three rows and a screen with three hundred are drawn the same height, so the
+  footer never floats mid-pane.
+- **The footer is pinned.** The header sits under the top border, the footer
+  occupies the last inner rows, and the body takes what is between them. Spare
+  room lands inside the body, below its content, and never below the footer.
+- **The body always keeps one blank row at its top and one at its bottom**, even
+  when it pages or scrolls: the content must not touch the rule above it or the
+  footer below it, or two sections stop being distinguishable. The body's usable
+  rows are the clamped height minus the borders, the header rows, the footer rows
+  and those two padding rows; `frame.Surface.BodyRows` answers the count, and a
+  product pages or scrolls its content against it.
+- **A frame smaller than its pane is centred** (`frame.Surface.Popup`): blank rows
+  above and below it, never one large gap under the footer.
+- **In a column grid the padding and spare rows are grid rows too**
+  (`frame.Surface.Columns`, `frame.BlankRow`): the column rule runs continuously
+  from the opening `┬` joint to the closing `┴` one. A plain blank row under a
+  joint leaves a lone tick, a gap, the rule resuming on the content, and another
+  tick above the closing joint.
+- **The bounds are `frame.Recommended`: 60 to 160 wide, 16 to 40 tall.** 60 is
+  the narrowest width that still shows the first page of the hint bar, a chip
+  column and a description; 160 is as far as one footer can be read across; 16 is
+  the borders, header, filter, rules, two footer rows and a three-row body; 40 is
+  a whole screen of groups, past which the footer drifts away from its content.
+- **A product's herdr popup manifest should offer that range.** A popup smaller
+  than the minimum gives the frame no room for a body; a popup larger than the
+  maximum leaves pane the frame does not use. Aim the manifest percentage at the
+  middle of the range (74% x 62% of a 190x60 terminal is about 140x37) and let the
+  clamp and the centring absorb the rest.
+
+## 9. States
 
 Every surface must have an answer for three states, and none of them is a blank
 box.
@@ -218,7 +286,7 @@ out, and never draw empty groups:
 describes the work; the caller owns the tick, so the screen costs nothing while
 nothing is happening. Never a full-screen "loading" placeholder.
 
-## 9. Anti-patterns we fixed
+## 10. Anti-patterns we fixed
 
 These are real regressions from the two products. Do not bring them back.
 
@@ -238,10 +306,14 @@ These are real regressions from the two products. Do not bring them back.
 | Selected row's indent leaked as plain spaces | The tint had a gap at the left edge. | The row's own background in every gap. |
 | Strings rendered once at init | Kept the Ascii profile the process started with and lost colour forever. | Render at call time, always. |
 | Left side shrinking the summary on a narrow window | The count jumped around while the user filtered. | Clip the left side first; the summary stays flush. |
-| Wrapping a hint bar to a second line | The frame grew a row and pushed the footer. | Drop whole hints. |
+| Wrapping a hint bar to a second line | The frame grew a row and pushed the footer. | Page whole hints behind the paging chip. |
+| Hints hidden without an indicator | A narrow window silently lost keys the user needed, and nothing said more existed. | Page them: the last cell group is the paging chip, `tab` `more 1/2`. |
+| A frame that hugs its content and leaves the pane empty below the footer | The footer sat mid-pane, away from the edge the eye looks for, and the surface read as a half-drawn popup. | The height is the clamped pane height; the footer is pinned to the bottom edge. |
+| A body with no bottom padding | Content touched the rule and the section above read as cut off. | One blank row at the top of the body and one at the bottom, always. |
+| Body padding rows drawn without the column separators | The column rule broke into a lone tick under `┬`, a gap, the rule resuming on the content, and another tick above `┴`. | Blank body rows are grid rows: same widths, same separators. |
 | Empty groups drawn under a zero-match filter | The screen looked broken rather than empty. | One calm message and the way out. |
 
-## 10. Migration map
+## 11. Migration map
 
 The private copies these packages were extracted from, for the screens that are
 still on them:
@@ -250,7 +322,7 @@ still on them:
 | --- | --- |
 | `ui.Frame`, `ui.Layout`, `ui.Float`, `ui.Footer` | `frame.` |
 | `ui.Section`, `ui.Guide`, `ui.Row`, `ui.SelectedRow`, `ui.Roles`, `ui.RowRoles` | `list.` |
-| `ui.Chip`, `ui.Hint`, `ui.Hints` | `chip.` |
+| `ui.Chip`, `ui.Hint`, `ui.Hints` | `chip.` (`Chip`, `Hint`, `HintBar`; `Hints` is page 0) |
 | `ui.Width`, `ui.Clip`, `ui.ClipLeft`, `ui.EllipsisPath`, `ui.Fit`, `ui.Join`, `ui.Center`, `ui.ShortPath`, `ui.RelativeTime`, `ui.Plain` | `text.` |
 | `ui.Live`, `ui.Idle`, `ui.Mark`, `ui.SelectMark`, `ui.Cursor`, `ui.Ellipsis` | `text.` |
 | `ui.Dot`, `ui.Label` | `theme.` |

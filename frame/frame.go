@@ -206,6 +206,16 @@ func ColumnRule(widths []int, junction string) string {
 	return theme.Border.Render(LeftTee) + theme.Border.Render(rule.String()) + theme.Border.Render(RightTee)
 }
 
+// BlankRow is one body row with the column separators and no content. A gridded
+// body's padding and spare rows are built with it, so the column rule runs
+// unbroken from the opening joint to the closing one.
+func BlankRow(f Frame, widths []int) string {
+	if len(widths) == 0 {
+		return f.Row("")
+	}
+	return Grid(f, nil, widths, 1)[0]
+}
+
 // Grid joins column blocks row by row: every cell is fitted to its column, the
 // rows are separated by the frame's vertical rule, and the result is exactly
 // height lines tall. blocks[i] is the body of column i and may be shorter than
@@ -237,4 +247,153 @@ func Grid(f Frame, blocks [][]string, widths []int, height int) []string {
 		out = append(out, row.String())
 	}
 	return out
+}
+
+// BodyPadding is the blank row a body always keeps at its top and at its bottom,
+// so its content never touches the rule above it or the footer below it. It is
+// what makes two sections distinguishable at a glance.
+const BodyPadding = 1
+
+// Size is the range a frame is drawn within, whatever the pane offers. A zero
+// bound is no bound, so an unset Size draws the frame at the pane's own size.
+type Size struct {
+	MinWidth  int
+	MaxWidth  int
+	MinHeight int
+	MaxHeight int
+}
+
+// Recommended is the size range a product popup should use, and the range its
+// herdr manifest should be able to offer:
+//
+//   - 60 wide: the narrowest width that still shows the first page of the hint
+//     bar, a chip column and a description without cutting either.
+//   - 160 wide: past that the eye cannot follow one footer across the pane, and
+//     longer facts stop helping.
+//   - 16 tall: the borders, the header and its rule, the filter row, the column
+//     rules, the two footer rows and a three-row body.
+//   - 40 tall: a whole screen of groups; past that the footer drifts away from
+//     the content it describes.
+//
+// A pane smaller than the range wins: a frame never exceeds the pane showing it.
+var Recommended = Size{MinWidth: 60, MaxWidth: 160, MinHeight: 16, MaxHeight: 40}
+
+// ClampWidth is the frame width for a pane width.
+func (s Size) ClampWidth(pane int) int { return clampSize(pane, s.MinWidth, s.MaxWidth) }
+
+// ClampHeight is the frame height for a pane height.
+func (s Size) ClampHeight(pane int) int { return clampSize(pane, s.MinHeight, s.MaxHeight) }
+
+// Clamp is both bounds at once.
+func (s Size) Clamp(width, height int) (int, int) {
+	return s.ClampWidth(width), s.ClampHeight(height)
+}
+
+// clampSize holds pane inside min..max and never past the pane itself: the
+// minimum of too small a pane is the pane, because a frame that overflows its
+// pane is worse than a cramped one.
+func clampSize(pane, minimum, maximum int) int {
+	size := pane
+	if minimum > 0 && size < minimum {
+		size = minimum
+	}
+	if maximum > 0 && size > maximum {
+		size = maximum
+	}
+	if size > pane {
+		size = pane
+	}
+	return max(0, size)
+}
+
+// Surface is one screen inside its bounds: the frame it is drawn in, the size
+// range it stays within, and the rows pinned to its edges. Top sits directly under
+// the top border, Bottom directly above the closing border, and the body takes
+// what is between them, always opening and closing with one blank row.
+//
+// The frame is as tall as the clamped pane, never as tall as its content, so the
+// footer is pinned to the bottom edge instead of the pane staying empty below it.
+// Top, Bottom and the body are framed lines: the product renders them with the
+// frame it already sized (ask Width and Height first, or hand in a Frame whose
+// Width is Width(paneWidth)), so its own rules and columns survive.
+//
+// When the body is a column grid, set Columns to its widths: the padding and spare
+// rows are drawn as grid rows too, so a column rule runs unbroken from the opening
+// joint to the closing one instead of breaking on a plain row.
+type Surface struct {
+	Frame  Frame
+	Size   Size
+	Top    []string
+	Bottom []string
+	// Columns are the body's column widths when the body is a grid; nil means a
+	// plain body.
+	Columns []int
+}
+
+// Width is the frame width for a pane width.
+func (s Surface) Width(paneWidth int) int { return s.Size.ClampWidth(paneWidth) }
+
+// Height is the frame height for a pane height.
+func (s Surface) Height(paneHeight int) int { return s.Size.ClampHeight(paneHeight) }
+
+// BodyRows is how many content rows the body gets for a pane height: the clamped
+// height minus the two borders, the Top and Bottom rows and the body's two
+// padding rows. A product pages or scrolls its content to fit this count.
+func (s Surface) BodyRows(paneHeight int) int {
+	return max(0, s.Height(paneHeight)-2-len(s.Top)-len(s.Bottom)-2*BodyPadding)
+}
+
+// Render composes the frame at the clamped size: Top under the top border, the
+// body, then Bottom against the closing border. The frame is always as tall as
+// the clamped pane, so extra room lands inside the body below its content and
+// never below the footer. The body's first and last rows are blank; body rows
+// past the room are dropped, so a caller asks BodyRows and pages.
+func (s Surface) Render(paneWidth, paneHeight int, body []string) string {
+	f := s.Frame
+	f.Width = s.Width(paneWidth)
+
+	top, bottom := s.Top, s.Bottom
+	interior := max(0, s.Height(paneHeight)-2)
+	if len(top)+len(bottom) > interior {
+		// A pane too short for both edges: the footer keeps the last rows, the
+		// header keeps whatever is left.
+		if len(bottom) > interior {
+			bottom = bottom[len(bottom)-interior:]
+		}
+		top = top[:max(0, interior-len(bottom))]
+	}
+
+	rows := make([]string, 0, interior)
+	rows = append(rows, top...)
+	rows = append(rows, bodyBlock(f, s.Columns, body, interior-len(top)-len(bottom))...)
+	rows = append(rows, bottom...)
+	return Layout(f, rows...)
+}
+
+// Popup renders the surface and centres it in the pane, so a frame narrower or
+// shorter than its pane sits in the middle of it instead of hugging its top.
+func (s Surface) Popup(paneWidth, paneHeight int, body []string) string {
+	return Float(s.Render(paneWidth, paneHeight, body), paneWidth, paneHeight)
+}
+
+// bodyBlock builds the body's rows: a blank row, the content, the room that is
+// left, a blank row — every one of them framed, so a padding row reads as empty
+// body rather than as a hole in the frame. In a gridded body the blank rows keep
+// the column separators, so the column rule does not break around them. The spare
+// room sits below the content, so content stays just under the header while the
+// body still ends with its padding row.
+func bodyBlock(f Frame, columns []int, content []string, room int) []string {
+	block := make([]string, max(0, room))
+	blank := BlankRow(f, columns)
+	for index := range block {
+		block[index] = blank
+	}
+	if room >= 2*BodyPadding {
+		visible := content
+		if len(visible) > room-2*BodyPadding {
+			visible = visible[:room-2*BodyPadding]
+		}
+		copy(block[BodyPadding:], visible)
+	}
+	return block
 }

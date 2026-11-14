@@ -1,6 +1,7 @@
 package frame_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -283,5 +284,293 @@ func TestFrameSpendsNoColourOnWhatIsNotAFrameGlyph(t *testing.T) {
 	}
 	if !strings.Contains(rule, strings.SplitN(theme.Border.Render("x"), "x", 2)[0]) {
 		t.Fatalf("the rule's joints are not the border role: %q", rule)
+	}
+}
+
+// rowContent is what a framed row carries between its borders: the border glyphs
+// and the padding taken away, so a blank row reads as blank.
+func rowContent(line string) string {
+	plain := strings.TrimSuffix(strings.TrimPrefix(text.Plain(line), frame.Vertical), frame.Vertical)
+	return strings.TrimSpace(plain)
+}
+
+// framedRows renders the body contents the way a product hands them in: already
+// framed, so a row's own rules and columns survive.
+func framedRows(surface frame.Surface, contents ...string) []string {
+	rows := make([]string, len(contents))
+	for index, content := range contents {
+		rows[index] = surface.Frame.Row(content)
+	}
+	return rows
+}
+
+// bounded is the surface the size tests size: a header row, a two-line footer and
+// narrow bounds, so a pane both larger and smaller than the range is exercised.
+// The rows are framed for the clamped width, the way a product composes them.
+func bounded(paneWidth int) frame.Surface {
+	size := frame.Size{MinWidth: 40, MaxWidth: 120, MinHeight: 12, MaxHeight: 20}
+	f := frame.Frame{Title: "demo", Width: size.ClampWidth(paneWidth)}
+	return frame.Surface{
+		Frame:  f,
+		Size:   size,
+		Top:    []string{f.Row("HEADER")},
+		Bottom: []string{f.Row("DETAIL"), f.Row("HINTS")},
+	}
+}
+
+func TestSizeClampsBothWays(t *testing.T) {
+	size := frame.Size{MinWidth: 60, MaxWidth: 160, MinHeight: 16, MaxHeight: 40}
+
+	cases := []struct{ paneWidth, paneHeight, width, height int }{
+		{200, 60, 160, 40}, // past the maximum: the frame stops growing
+		{100, 30, 100, 30}, // inside the range: the frame is the pane
+		{60, 16, 60, 16},   // exactly the minimum
+		{160, 40, 160, 40}, // exactly the maximum
+		{40, 10, 40, 10},   // a smaller pane wins: a frame never exceeds its pane
+	}
+	for _, c := range cases {
+		if got := size.ClampWidth(c.paneWidth); got != c.width {
+			t.Fatalf("ClampWidth(%d) = %d, want %d", c.paneWidth, got, c.width)
+		}
+		if got := size.ClampHeight(c.paneHeight); got != c.height {
+			t.Fatalf("ClampHeight(%d) = %d, want %d", c.paneHeight, got, c.height)
+		}
+		width, height := size.Clamp(c.paneWidth, c.paneHeight)
+		if width != c.width || height != c.height {
+			t.Fatalf("Clamp(%d, %d) = (%d, %d), want (%d, %d)", c.paneWidth, c.paneHeight, width, height, c.width, c.height)
+		}
+	}
+
+	var none frame.Size
+	if got := none.ClampWidth(42); got != 42 {
+		t.Fatalf("an unset Size clamped the width to %d, want the pane's 42", got)
+	}
+	if got := none.ClampHeight(17); got != 17 {
+		t.Fatalf("an unset Size clamped the height to %d, want the pane's 17", got)
+	}
+}
+
+// TestSurfaceIsAsTallAsTheClampedPane pins the fill rule: the frame's height is
+// the clamped pane height, never the height of its content.
+func TestSurfaceIsAsTallAsTheClampedPane(t *testing.T) {
+	for _, pane := range []int{5, 11, 12, 16, 20, 40} {
+		surface := bounded(80)
+		bodies := map[string][]string{
+			"no body":        nil,
+			"one row":        framedRows(surface, "one"),
+			"three rows":     framedRows(surface, "one", "two", "three"),
+			"a hundred rows": framedRows(surface, make([]string, 100)...),
+		}
+		want := surface.Height(pane)
+		for name, body := range bodies {
+			lines := strings.Split(surface.Render(80, pane, body), "\n")
+			if len(lines) != want {
+				t.Fatalf("pane %d with %s: the frame is %d rows tall, want %d", pane, name, len(lines), want)
+			}
+		}
+	}
+}
+
+// TestSurfacePinsTheFooterToTheLastInnerRows pins the anchoring rule: whatever the
+// body holds, the footer keeps its rows against the closing border.
+func TestSurfacePinsTheFooterToTheLastInnerRows(t *testing.T) {
+	surface := bounded(80)
+	bodies := [][]string{
+		nil,
+		framedRows(surface, "one"),
+		framedRows(surface, "one", "two", "three", "four", "five", "six", "seven", "eight"),
+	}
+	for _, body := range bodies {
+		lines := strings.Split(surface.Render(80, 20, body), "\n")
+
+		if got := rowContent(lines[1]); got != "HEADER" {
+			t.Fatalf("%d body rows: the header is not under the top border: %q", len(body), got)
+		}
+		if got := rowContent(lines[len(lines)-3]); got != "DETAIL" {
+			t.Fatalf("%d body rows: the detail line is not the last footer row: %q", len(body), got)
+		}
+		if got := rowContent(lines[len(lines)-2]); got != "HINTS" {
+			t.Fatalf("%d body rows: the hint bar is not pinned above the closing border: %q", len(body), got)
+		}
+		if !strings.HasPrefix(text.Plain(lines[len(lines)-1]), frame.BottomLeft) {
+			t.Fatalf("%d body rows: the frame does not close after the footer: %q", len(body), text.Plain(lines[len(lines)-1]))
+		}
+	}
+}
+
+// TestSurfacePadsTheBodyAtBothEnds pins the padding rule: the body always opens
+// and closes with a blank row, and the room it does not use stays inside it.
+func TestSurfacePadsTheBodyAtBothEnds(t *testing.T) {
+	surface := bounded(80)
+	bodies := [][]string{
+		nil,
+		framedRows(surface, "one"),
+		framedRows(surface, "one", "two", "three"),
+	}
+	for _, body := range bodies {
+		lines := strings.Split(surface.Render(80, 20, body), "\n")
+
+		if got := rowContent(lines[2]); got != "" {
+			t.Fatalf("%d body rows: the body does not open with a blank row: %q", len(body), got)
+		}
+		if got := rowContent(lines[len(lines)-4]); got != "" {
+			t.Fatalf("%d body rows: the body does not close with a blank row: %q", len(body), got)
+		}
+		for index, want := range body {
+			if got := rowContent(lines[3+index]); got != rowContent(want) {
+				t.Fatalf("%d body rows: row %d = %q, want %q", len(body), index, got, rowContent(want))
+			}
+		}
+		if got := rowContent(lines[3+len(body)]); got != "" {
+			t.Fatalf("%d body rows: the spare room is not below the content: %q", len(body), got)
+		}
+	}
+}
+
+// TestSurfaceShowsExactlyTheBodyRows pins the contract a product pages with: the
+// body holds the count BodyRows answers, and anything past it is dropped.
+func TestSurfaceShowsExactlyTheBodyRows(t *testing.T) {
+	surface := bounded(80) // 20 - 2 borders - 1 header - 2 footer - 2 padding = 13
+	if got, want := surface.BodyRows(20), 13; got != want {
+		t.Fatalf("BodyRows(20) = %d, want %d", got, want)
+	}
+	if got, want := surface.BodyRows(60), 13; got != want {
+		t.Fatalf("BodyRows(60) = %d, want the clamped %d", got, want)
+	}
+	if got, want := surface.BodyRows(12), 5; got != want {
+		t.Fatalf("BodyRows(12) = %d, want %d", got, want)
+	}
+	if got := surface.BodyRows(5); got != 0 {
+		t.Fatalf("BodyRows(5) = %d, want 0 when the pane cannot hold a body", got)
+	}
+	if got, want := surface.Height(60), 20; got != want {
+		t.Fatalf("Height(60) = %d, want the clamped %d", got, want)
+	}
+
+	numbers := make([]string, 0, 100)
+	for index := 1; index <= 100; index++ {
+		numbers = append(numbers, strconv.Itoa(index))
+	}
+	body := framedRows(surface, numbers...)
+	lines := strings.Split(surface.Render(80, 20, body), "\n")
+	room := surface.BodyRows(20)
+	if got, want := rowContent(lines[2+room]), strconv.Itoa(room); got != want {
+		t.Fatalf("the last visible body row = %q, want %q", got, want)
+	}
+}
+
+// TestSurfaceNeverExceedsThePaneWidth pins the width rule: every frame line is
+// the clamped width, so no line ever exceeds the pane.
+func TestSurfaceNeverExceedsThePaneWidth(t *testing.T) {
+	for _, pane := range []int{30, 40, 80, 120, 200} {
+		surface := bounded(pane)
+		width := surface.Width(pane)
+		view := surface.Render(pane, 20, framedRows(surface, "a row"))
+		for _, line := range strings.Split(view, "\n") {
+			if got := text.Width(line); got != width {
+				t.Fatalf("pane %d: a frame line is %d cells wide, want the clamped %d", pane, got, width)
+			}
+			if got := text.Width(line); got > pane {
+				t.Fatalf("pane %d: a frame line is %d cells wide, past the pane", pane, got)
+			}
+		}
+	}
+}
+
+// TestPopupCentresTheClampedFrame pins what a product draws: the clamped frame
+// sits in the middle of the pane instead of hugging its top edge.
+func TestPopupCentresTheClampedFrame(t *testing.T) {
+	const paneWidth, paneHeight = 200, 50
+	surface := bounded(paneWidth)
+	lines := strings.Split(surface.Popup(paneWidth, paneHeight, framedRows(surface, "one", "two")), "\n")
+
+	frameHeight, frameWidth := surface.Height(paneHeight), surface.Width(paneWidth)
+	top, left := (paneHeight-frameHeight)/2, (paneWidth-frameWidth)/2
+	if len(lines) != top+frameHeight {
+		t.Fatalf("the popup is %d rows tall, want %d", len(lines), top+frameHeight)
+	}
+	for index := 0; index < top; index++ {
+		if strings.TrimSpace(lines[index]) != "" {
+			t.Fatalf("row %d above the frame is not blank: %q", index, lines[index])
+		}
+	}
+	for index := top; index < len(lines); index++ {
+		if got, want := text.Width(lines[index]), left+frameWidth; got != want {
+			t.Fatalf("row %d is %d cells wide, want the indent plus the frame (%d)", index, got, want)
+		}
+	}
+}
+
+// separatorCells is the cell where every column rule sits on a rendered line: the
+// frame's two sides and the rules between the columns.
+func separatorCells(line string) []int {
+	cells := []int{}
+	cell := 0
+	for _, glyph := range text.Plain(line) {
+		if string(glyph) == frame.Vertical {
+			cells = append(cells, cell)
+		}
+		cell += text.Width(string(glyph))
+	}
+	return cells
+}
+
+// cellOf is the cell the first glyph sits on, or -1.
+func cellOf(line string, wanted rune) int {
+	cell := 0
+	for _, glyph := range text.Plain(line) {
+		if glyph == wanted {
+			return cell
+		}
+		cell += text.Width(string(glyph))
+	}
+	return -1
+}
+
+// TestSurfaceKeepsTheColumnRuleThroughTheBody pins the grid contract: in a
+// two-column surface every interior body row — padding and spare rows included —
+// carries the separator in the same cell, so the column rule runs from the opening
+// joint to the closing one without a break.
+func TestSurfaceKeepsTheColumnRuleThroughTheBody(t *testing.T) {
+	size := frame.Size{MinWidth: 40, MaxWidth: 120, MinHeight: 12, MaxHeight: 20}
+	f := frame.Frame{Title: "demo", Width: 80}
+	widths := frame.ColumnWidths(f.Width-2, 2)
+	surface := frame.Surface{
+		Frame:   f,
+		Size:    size,
+		Columns: widths,
+		Top:     []string{f.Row("HEADER"), frame.ColumnRule(widths, frame.TopTee)},
+		Bottom:  []string{frame.ColumnRule(widths, frame.BottomTee), f.Row("FOOTER")},
+	}
+	blocks := [][]string{{"left one", "left two"}, {"right one"}}
+	lines := strings.Split(surface.Render(80, 20, frame.Grid(f, blocks, widths, surface.BodyRows(20))), "\n")
+
+	joint := cellOf(lines[2], '┬')
+	if joint < 0 {
+		t.Fatalf("the opening rule carries no joint: %q", text.Plain(lines[2]))
+	}
+	want := []int{0, joint, f.Width - 1}
+
+	// Interior: one header row, the opening rule, the body, the closing rule, one
+	// footer row.
+	body := lines[3 : len(lines)-3]
+	if len(body) != surface.BodyRows(20)+2 {
+		t.Fatalf("the body region is %d rows, want %d", len(body), surface.BodyRows(20)+2)
+	}
+	for index, line := range body {
+		got := separatorCells(line)
+		if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+			t.Fatalf("body row %d has its separators at %v, want %v: %q", index, got, want, text.Plain(line))
+		}
+	}
+	if got := cellOf(lines[len(lines)-3], '┴'); got != joint {
+		t.Fatalf("the closing joint is at cell %d, want the column's %d", got, joint)
+	}
+
+	// A plain body keeps plain blank rows: no separator in the middle.
+	plain := bounded(80)
+	plainLines := strings.Split(plain.Render(80, 20, framedRows(plain, "one")), "\n")
+	if got := separatorCells(plainLines[2]); len(got) != 2 {
+		t.Fatalf("a plain body grew a column separator: %q", text.Plain(plainLines[2]))
 	}
 }

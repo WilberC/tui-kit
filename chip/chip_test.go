@@ -1,6 +1,7 @@
 package chip_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -79,6 +80,166 @@ func TestHintsDropWholeHintsInsteadOfWrapping(t *testing.T) {
 	}
 	if width := text.Width(chip.Hints(1, hints...)); width > 1 {
 		t.Fatalf("a one-cell bar is %d cells wide: %q", width, chip.Hints(1, hints...))
+	}
+}
+
+// hintBar is the fixture the paging tests page through: six hints of different
+// widths, declared in priority order.
+func hintBar() []chip.Hint {
+	return []chip.Hint{
+		{Key: "enter", Label: "run"},
+		{Key: "↑↓", Label: "move"},
+		{Key: "type", Label: "filter"},
+		{Key: "ctrl+g", Label: "git status"},
+		{Key: "alt+enter", Label: "create tab"},
+		{Key: "esc", Label: "close"},
+	}
+}
+
+// TestHintBarFitsExactlyLikeHints pins the promise the old API keeps: when every
+// hint fits, the bar is the same line it always was, with no paging chip at all.
+func TestHintBarFitsExactlyLikeHints(t *testing.T) {
+	hints := hintBar()[:2]
+	want := chip.Pair(theme.ChipText, "enter", "run") + chip.Gutter +
+		chip.Pair(theme.ChipText, "↑↓", "move")
+
+	for _, page := range []int{0, 1, -3, 9} {
+		if got := (chip.HintBar{Page: page}).Render(80, hints...); got != want {
+			t.Fatalf("HintBar{Page: %d}.Render(80) = %q, want %q", page, got, want)
+		}
+	}
+	if got := chip.Hints(80, hints...); got != want {
+		t.Fatalf("Hints(80) = %q, want %q", got, want)
+	}
+	if pages := (chip.HintBar{}).Pages(80, hints...); pages != 1 {
+		t.Fatalf("Pages(80) = %d, want 1 when everything fits", pages)
+	}
+	if plain := text.Plain(chip.Hints(80, hints...)); strings.Contains(plain, chip.PageKey) {
+		t.Fatalf("a bar that fits carries a paging chip: %q", plain)
+	}
+}
+
+// TestHintBarPagesEveryHintReachable pins the rule the owner asked for: hints
+// that do not fit stay reachable. Every page fits the width, ends with the
+// paging chip naming the key and the position, and owns each hint exactly once
+// in declaration order.
+func TestHintBarPagesEveryHintReachable(t *testing.T) {
+	hints := hintBar()
+
+	for _, width := range []int{70, 60, 40} {
+		held := make([]int, len(hints)) // pages each hint appeared on
+		pages := (chip.HintBar{}).Pages(width, hints...)
+		if pages < 2 {
+			t.Fatalf("width %d: Pages = %d, want at least 2", width, pages)
+		}
+
+		for page := 0; page < pages; page++ {
+			line := (chip.HintBar{Page: page}).Render(width, hints...)
+			if got := text.Width(line); got > width {
+				t.Fatalf("width %d page %d: the bar is %d cells wide: %q", width, page, got, text.Plain(line))
+			}
+
+			plain := text.Plain(line)
+			want := " " + chip.PageKey + "  more " + strconv.Itoa(page+1) + "/" + strconv.Itoa(pages)
+			if !strings.HasSuffix(plain, want) {
+				t.Fatalf("width %d page %d: the last cell group is not the paging chip %q: %q", width, page, want, plain)
+			}
+
+			last := -1
+			for index, hint := range hints {
+				if !strings.Contains(plain, " "+hint.Key+" ") {
+					continue
+				}
+				if index <= last {
+					t.Fatalf("width %d page %d: the order broke at %q: %q", width, page, hint.Key, plain)
+				}
+				last = index
+				held[index]++
+			}
+		}
+
+		for index, count := range held {
+			if count != 1 {
+				t.Fatalf("width %d: hint %q appears on %d pages, want exactly 1", width, hints[index].Key, count)
+			}
+		}
+	}
+}
+
+// TestHintBarNextWrapsAround pins the movement the product wires: the key walks
+// forward and returns to page 0, and does nothing while everything fits.
+func TestHintBarNextWrapsAround(t *testing.T) {
+	hints := hintBar()
+	const width = 60
+
+	bar := chip.HintBar{}
+	pages := bar.Pages(width, hints...)
+	if pages < 2 {
+		t.Fatalf("Pages(%d) = %d, want at least 2", width, pages)
+	}
+	first := bar.Render(width, hints...)
+	for page := 1; page < pages; page++ {
+		bar.Next(width, hints...)
+		if bar.Page != page {
+			t.Fatalf("after %d Next calls Page = %d, want %d", page, bar.Page, page)
+		}
+		if bar.Render(width, hints...) == first {
+			t.Fatalf("page %d renders the first page", bar.Page)
+		}
+	}
+	bar.Next(width, hints...)
+	if bar.Page != 0 {
+		t.Fatalf("Next past the last page left Page = %d, want 0", bar.Page)
+	}
+	if bar.Render(width, hints...) != first {
+		t.Fatalf("wrapping back does not render the first page again")
+	}
+
+	fitting := chip.HintBar{}
+	fitting.Next(200, hints...)
+	if fitting.Page != 0 {
+		t.Fatalf("Next moved a bar that fits to page %d, want 0", fitting.Page)
+	}
+}
+
+// TestPagesIsOneWithoutHintsOrWidth keeps the page count defined when there is
+// nothing to page and when there is no room to page in: a caller may divide by
+// it without guessing.
+func TestPagesIsOneWithoutHintsOrWidth(t *testing.T) {
+	bar := chip.HintBar{}
+	if got := bar.Pages(200); got != 1 {
+		t.Fatalf("Pages with no hints = %d, want 1", got)
+	}
+	if got := bar.Pages(0, hintBar()...); got != 1 {
+		t.Fatalf("Pages at width 0 = %d, want 1", got)
+	}
+	if got := bar.Render(200); got != "" {
+		t.Fatalf("a bar with no hints renders %q, want the empty string", got)
+	}
+	if got := bar.Render(0, hintBar()...); got != "" {
+		t.Fatalf("a bar with no width renders %q, want the empty string", got)
+	}
+}
+
+// TestHintBarSurvivesOneCell pins the extreme: no room for anything, so each
+// page holds one hint and the paging chip is cut, never wrapped.
+func TestHintBarSurvivesOneCell(t *testing.T) {
+	hints := hintBar()
+	pages := (chip.HintBar{}).Pages(1, hints...)
+	if pages < 2 {
+		t.Fatalf("Pages(1) = %d, want one page per hint", pages)
+	}
+	for page := 0; page < pages; page++ {
+		line := (chip.HintBar{Page: page}).Render(1, hints...)
+		if got := text.Width(line); got > 1 {
+			t.Fatalf("page %d at one cell is %d cells wide: %q", page, got, line)
+		}
+	}
+
+	bar := chip.HintBar{}
+	bar.Next(1, hints...)
+	if bar.Page < 0 || bar.Page >= pages {
+		t.Fatalf("Next at one cell left Page = %d, want 0..%d", bar.Page, pages-1)
 	}
 }
 

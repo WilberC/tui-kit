@@ -1,9 +1,13 @@
 // Command demo renders one tui-kit surface — a framed popup with groups, chips,
 // a tinted selected row and a footer — at the width and height you ask for, so
-// the look can be checked by eye or captured as an image.
+// the look can be checked by eye or captured as an image. The pane is clamped to
+// the recommended size range, so a tall or wide pane shows the clamped frame
+// centred, with its footer pinned inside it.
 //
 //	go run ./examples/demo -w 140 -h 40
 //	go run ./examples/demo -w 180 -o /tmp/demo-180.ansi
+//	go run ./examples/demo -w 60 -h 30 -page 1   # a narrow bar pages its hints
+//	go run ./examples/demo -w 140 -h 50          # a tall pane: the frame is centred
 package main
 
 import (
@@ -21,11 +25,6 @@ import (
 	"github.com/WilberC/tui-kit/text"
 	"github.com/WilberC/tui-kit/theme"
 )
-
-// frameRows counts every row the demo spends outside the body: both borders, the
-// header, the rule under it, the filter row, the two column rules, the footer and
-// the hint bar.
-const frameRows = 9
 
 // maxChipWidth and minDescWidth keep the chip column readable at 80 columns: the
 // column never eats the description's room.
@@ -71,11 +70,23 @@ var groups = []group{
 	}},
 }
 
+// demoHints are the footer's keys, in priority order: the bar pages them when a
+// narrow window cannot hold them all.
+var demoHints = []chip.Hint{
+	{Key: "enter", Label: "run"},
+	{Key: "↑↓", Label: "move"},
+	{Key: "type", Label: "filter"},
+	{Key: "ctrl+g", Label: "git status"},
+	{Key: "alt+enter", Label: "create tab"},
+	{Key: "esc", Label: "close"},
+}
+
 func main() {
 	width := flag.Int("w", 140, "width of the popup in cells")
 	height := flag.Int("h", 40, "height of the popup in rows")
 	output := flag.String("o", "", "write the rendered ANSI to this file instead of stdout")
 	plain := flag.Bool("plain", false, "render without colour, the way a dumb terminal sees it")
+	page := flag.Int("page", 0, "hint bar page to draw; a page past the end wraps")
 	flag.Parse()
 
 	// The demo is also a capture tool: a pipe has no terminal, so force the
@@ -85,7 +96,7 @@ func main() {
 		lipgloss.SetColorProfile(termenv.Ascii)
 	}
 
-	view := render(*width, *height)
+	view := renderPage(*width, *height, *page)
 	if *output == "" {
 		fmt.Print(view)
 		return
@@ -98,13 +109,20 @@ func main() {
 
 // render draws the whole popup: one frame, two notes at the top, the columns the
 // width earns, and the two footer lines.
-func render(width, height int) string {
+func render(width, height int) string { return renderPage(width, height, 0) }
+
+// renderPage draws the popup showing one page of the hint bar, so a narrow window
+// can be captured on every page it holds. The pane is clamped to the recommended
+// size range, so a pane taller than the frame leaves the frame centred instead of
+// hugging its top, and the frame itself is always as tall as the clamped pane: the
+// footer is pinned to its bottom edge and the body keeps one blank row at each end.
+func renderPage(paneWidth, paneHeight, page int) string {
+	size := frame.Recommended
 	f := frame.Frame{
 		Title: theme.GoldBold.Render("tui-kit") + theme.Quiet.Render(" › ") + theme.AccentBold.Render("demo"),
-		Width: max(30, width),
+		Width: size.ClampWidth(paneWidth),
 	}
 	inner := f.Width - 2
-	body := max(3, height-frameRows)
 
 	header := text.Join(
 		theme.Muted.Render("3 groups")+theme.Dot()+theme.AccentBold.Render("12 bindings"),
@@ -134,26 +152,31 @@ func render(width, height int) string {
 		f.ContentWidth(),
 	)
 
-	hints := chip.Hints(f.ContentWidth(),
-		chip.Hint{Key: "enter", Label: "run"},
-		chip.Hint{Key: "↑↓", Label: "move"},
-		chip.Hint{Key: "type", Label: "filter"},
-		chip.Hint{Key: "esc", Label: "close"},
-	)
+	// Six hints do not fit below 80 columns, so a narrow window shows the paging
+	// chip and the rest of the bar behind PageKey.
+	hints := chip.HintBar{Page: page}.Render(f.ContentWidth(), demoHints...)
 
-	rows := []string{
-		f.Row(header),
-		f.Rule(),
-		f.Row(filter),
-		frame.ColumnRule(widths, frame.TopTee),
+	surface := frame.Surface{
+		Frame:   f,
+		Size:    size,
+		Columns: widths,
+		Top: []string{
+			f.Row(header),
+			f.Rule(),
+			f.Row(filter),
+			frame.ColumnRule(widths, frame.TopTee),
+		},
+		Bottom: []string{
+			frame.ColumnRule(widths, frame.BottomTee),
+			f.Row(detail),
+			f.Row(hints),
+		},
 	}
-	rows = append(rows, frame.Grid(f, blocks, widths, body)...)
-	rows = append(rows,
-		frame.ColumnRule(widths, frame.BottomTee),
-		f.Row(detail),
-		f.Row(hints),
-	)
-	return frame.Layout(f, rows...)
+
+	// The body is exactly the rows Surface says it has, so the grid never decides
+	// the frame's height; the surface pads it at both ends.
+	body := frame.Grid(f, blocks, widths, surface.BodyRows(paneHeight))
+	return surface.Popup(paneWidth, paneHeight, body)
 }
 
 // columnBlocks pours the groups into one block per column: the chip column is
@@ -181,8 +204,7 @@ func columnBlocks(widths []int) [][]string {
 		chipWidth := min(chip.Width(labels...), maxChipWidth)
 		chipWidth = max(chipWidth, min(chip.Width(text.Unset), columnWidth-4-minDescWidth))
 
-		// One blank row separates the opening rule from the first group.
-		lines := []string{strings.Repeat(" ", columnWidth)}
+		lines := []string{}
 		for groupIndex, g := range groups[start:end] {
 			if groupIndex > 0 {
 				lines = append(lines, strings.Repeat(" ", columnWidth))
