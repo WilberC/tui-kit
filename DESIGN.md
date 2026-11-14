@@ -184,6 +184,42 @@ directly under it:
   facts** (`list.Mark`), after two cells of the row's own background, never before
   the chip column: a marked row must not move the columns its neighbours use.
 
+### Nested rows
+
+A row that is the detail of the row above it — a session's workspaces — hangs under
+that row's guide instead of starting on its own indent:
+
+```
+  ├─  Command bar    herdr · 3 tabs        ◆
+  │ ├─  web          3 tabs · 2 panes      ● working
+  │ └─  docs         1 tab · 1 pane
+  └─  Agent bench    herdr · 1 tab
+    └─  work         1 tab · 2 panes
+```
+
+- `list.Entry.Parent` (`*list.Parent{Last: …}`) makes the entry a nested row: it
+  draws the parent's continuation column — the cells the parent spent before its
+  body — and then its own guide, so **a child starts five cells past its parent**
+  and its guide lands on the cell its parent's guide closed on.
+- The continuation column **keeps the parent's guide open** (`│`) while the parent
+  has a sibling below it, and stays **blank** when the parent closes the group, so
+  a branch is never drawn to nowhere. The child's own guide follows the same rule
+  as any row's: `├─`, or `└─` when it is last.
+- The continuation column is the **row's own background** (`Roles.Space`, `Roles.Guide`),
+  so a tinted nested row is one band from the first cell of the continuation to the
+  row's edge, and the guide keeps its role on the tint.
+- A nested row is a row like any other: `list.Entry` **records its own zone** — the
+  whole row, continuation column included, so a click on the guide acts on the row.
+  What a click *means* stays the product's decision; a screen that treats children
+  as facts of the parent (herdr-suite's switcher: a click on a workspace selects its
+  session) passes the parent's id and the panel roles.
+
+The same list at 88x16 — the first session keeps its guide open under itself, the
+last one closes it, and the hovered and the selected child show the tint running
+through the continuation column:
+
+![Nested rows: two sessions, the first with its guide kept open over two workspace rows and the second closing its branch, one workspace row hovered and one selected with the accent edge on the continuation column](docs/gallery/nested.png)
+
 ## 5. Rhythm and spacing
 
 - **One blank row between groups.** Two blank rows read as "something is missing
@@ -216,6 +252,10 @@ description with hand-padded spaces:
 - `list.TrailingGap` (two cells) is the least the two columns keep between them,
   and every cell of it is the row's own background (`Roles.Gap`), so the selection
   and the hover tint run unbroken up to the trailing column.
+- **The spare room and that gutter are one run of the row's background**, never two:
+  the row writes the same bytes a hand-aligned column writes (`Roles.AlignRight`),
+  so moving a column into `Entry.Trailing` changes nothing it renders, and no
+  rasterizer seam shows inside the gutter.
 - **A table reserves the column width** (`Entry.TrailingWidth`): the column ends on
   the row's edge and its text is left-aligned inside it, so every row's value starts
   on the same cell — the cell the table's header names. The cells a value leaves
@@ -249,6 +289,7 @@ One glyph, one meaning, one cell wide — so a glyph never shifts a column.
 | `▏` | the live filter cursor | accent |
 | `❱` | the filter marker | accent |
 | `├─` `└─` | tree guide, middle / last of a group | guide |
+| `│` | the continuation column of a nested row: the parent's guide kept open | guide |
 | `▖▘▝▗` | work in progress | teal |
 
 Tree guides **close** a group: the last entry of a group is `└─`, the others
@@ -529,6 +570,7 @@ Two rules keep the images honest:
 | [chips.png](docs/gallery/chips.png) | §3, the token surface at 80x19 |
 | [rows.png](docs/gallery/rows.png) | §4 and §11, selection and hover side by side at 80x14 |
 | [table.png](docs/gallery/table.png) | §5, a row's trailing column at 88x14 |
+| [nested.png](docs/gallery/nested.png) | §4, rows nested under a parent's guide at 88x16 |
 | [hints-page-1.png](docs/gallery/hints-page-1.png), [hints-page-2.png](docs/gallery/hints-page-2.png) | §3, the paged hint bar at 60x10 |
 | [empty.png](docs/gallery/empty.png), [zero-match.png](docs/gallery/zero-match.png), [loading.png](docs/gallery/loading.png) | §9, the three states |
 | [demo-180x50.png](docs/gallery/demo-180x50.png), [demo-140x40.png](docs/gallery/demo-140x40.png), [demo-80x24.png](docs/gallery/demo-80x24.png) | the demo at its three captured sizes |
@@ -568,6 +610,17 @@ v0.4.0 renames nothing; it adds the pieces both products were working around:
 | `roles.Chip = theme.ChipAccent` on every row that is not selected | `list.Roles.ChipAccent` (and `theme.ChipAccentOnSelection` on the tint). |
 | `text.JoinDropRight(left, " "+right, width)` to buy a gutter | `text.JoinDropRight(left, right, width)`. |
 | A placeholder header row replaced after `BodyRows` becomes answerable | `frame.Surface.BodyRowsFor(paneHeight, headerRows, footerRows)`. |
+
+v0.4.1 moves the last two hand-placed row pieces into the kit:
+
+| Workaround | New |
+| --- | --- |
+| A nested row composed by hand (`continuation + list.Guide(...) + " "`) with its click target added beside it (`zones.Add(childID, 0, y, width, 1)`) | `list.Entry.Parent`: the entry draws the parent's continuation column, its own guide, and records its own zone. |
+| The trailing column aligned by hand — `roles.AlignRight(content, roles.Muted.Render(when)+roles.Gap(1), inner-text.Width(list.Row(roles, last, "")))` | `list.Entry.Trailing` with `TrailingWidth: text.Width(when)+1`: the same bytes, one span of the row's background in the gutter. |
+
+A v0.4.0 caller's rows are unchanged except for one invisible detail: two adjacent
+spans of the same tint are now one, so a tinted trailing row's ANSI carries one
+background run instead of two. Every cell, every glyph and every role is identical.
 
 | Old (herdr-utils `internal/which`) | New |
 | --- | --- |

@@ -107,6 +107,18 @@ row := list.Entry{Roles: roles, Last: false, Cell: cell,
 With `TrailingWidth` zero the column is as wide as its text and right-aligned
 against the row's edge, the v0.3.0 behaviour.
 
+A row that is the detail of the row above it sets `Parent`, and the entry draws the
+parent's continuation column and its own guide — the nested workspace rows a
+session switcher draws under the highlighted session — and records its own click
+target, continuation column included:
+
+```go
+row := list.Entry{Roles: list.RowRoles(false), Last: true,
+    Parent:      &list.Parent{Last: parentClosesTheGroup},
+    Description: roles.Name.Render("web") + "  " + roles.Muted.Render("3 tabs"),
+    Width:       content, ID: "child:0", Zones: zones, Y: surface.BodyY(line)}
+```
+
 A row's chip can carry the product's accent (`list.Roles.ChipAccent`, the guide's
 bindings) instead of its text role; the role follows the panel, the hover and the
 selection by itself, so no screen overrides `Roles.Chip`.
@@ -158,7 +170,7 @@ go run ./examples/gallery
 | `text/` | Cell widths, clipping and ellipsis, `Fit`/`PadLeft`/`Join`/`JoinDropRight`/`Center`, short paths, relative ages, the typographic glyphs. `JoinDropRight` keeps one cell between its sides; `Join` leaves the gutter to its caller, so its bytes do not move. | x/ansi |
 | `frame/` | `Frame` (titled border, rules, rows), `Layout`, `Float`, `Footer`, `Surface`/`Size` for a bounded, footer-pinned popup (`Recommended` bounds, `BodyRows` and `BodyRowsFor` for a count before the rows exist, `Row`/`Rows`, `Columns`, `BlankRow`, `RenderZones`/`PopupZones`), and the joined column grid (`ColumnRule`, `ColumnWidths`, `Grid`). | theme, text, zone |
 | `chip/` | `Chip`, `Pair`, `Cell`/`UnsetCell` chip columns, `Legend`, and the `HintBar` that pages hints behind `tab` instead of hiding them (`Hints` is its page-0 render; `RenderZones` records each chip and `chip.PageZone`). | theme, text, zone |
-| `list/` | `Roles`/`RowRoles`/`RowRolesFor` (selection and hover, the plain and accent chip roles), the tree `Guide`, `Row`, `SelectedRow`, `ChipRow`, the zone-aware `Entry` (a chip column, no chip column, or a `Trailing` column, right-aligned or at a reserved `TrailingWidth`), `Section`, agent states. | theme, text, zone |
+| `list/` | `Roles`/`RowRoles`/`RowRolesFor` (selection and hover, the plain and accent chip roles), the tree `Guide`, `Row`, `SelectedRow`, `ChipRow`, the zone-aware `Entry` (a chip column, no chip column, a nested row under a `Parent`, or a `Trailing` column, right-aligned or at a reserved `TrailingWidth`), `Section`, agent states. | theme, text, zone |
 | `zone/` | The hit-test map: named rectangles, `Hit(x, y)`, and the rewrite a surface applies (`Offset`, `Clip`). No I/O, no drawing. | nothing |
 | `clipboard/` | `OSC52(text)`: the sequence that sets the terminal's clipboard, and nothing else. | nothing |
 | `spinner/` | The four-frame work-in-progress tick; the caller owns the tick. | theme |

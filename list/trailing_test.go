@@ -8,6 +8,7 @@ import (
 
 	"github.com/WilberC/tui-kit/chip"
 	"github.com/WilberC/tui-kit/list"
+	"github.com/WilberC/tui-kit/text"
 )
 
 // cell is one rendered cell: the rune drawn there and the background in force at
@@ -180,5 +181,88 @@ func TestAReservedTrailingColumnStartsOnTheSameCell(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestATrailingColumnMatchesAHandAlignedColumn pins the column a product aligns by
+// hand today, byte for byte: the layout picker's age ends one cell short of the
+// row's edge, the room between it and the description is one run of the row's own
+// background, and Entry.Trailing has to write exactly those bytes — on the panel,
+// under the pointer and on the selection alike.
+func TestATrailingColumnMatchesAHandAlignedColumn(t *testing.T) {
+	truecolor(t)
+	const width = 52
+	const name, workspace, count, age = "Command bar", "herdr", "3 tabs · 2 panes", "2d ago"
+
+	for _, c := range []struct {
+		name  string
+		state list.State
+	}{
+		{name: "plain"},
+		{name: "hovered", state: list.State{Hovered: true}},
+		{name: "selected", state: list.State{Selected: true}},
+	} {
+		roles := list.RowRolesFor(c.state)
+		last := true
+		description := roles.Name.Render(name) + roles.Gap(2) +
+			roles.Muted.Render(workspace) + roles.Gap(2) + roles.Muted.Render(count)
+
+		// herdr-suite's layout picker, as it writes the age column today: it measures
+		// the room Entry leaves the description with list.Row, then aligns the age
+		// one cell short of the row's edge itself.
+		room := width - text.Width(list.Row(roles, last, ""))
+		hand := roles.AlignRight(description, roles.Muted.Render(age)+roles.Gap(1), room)
+		reference := list.Row(roles, last, hand)
+		if roles.Selected {
+			reference = list.SelectedRow(reference, width)
+		}
+
+		row := list.Entry{
+			Roles:         roles,
+			Last:          last,
+			Description:   description,
+			Trailing:      roles.Muted.Render(age),
+			TrailingWidth: text.Width(age) + 1,
+			Width:         width,
+		}.Render()
+
+		if row != reference {
+			t.Fatalf("the %s trailing column drew %q, want the hand-aligned column %q", c.name, row, reference)
+		}
+		if got, want := text.Width(row), width; got != want {
+			t.Fatalf("the %s row is %d cells wide, want %d", c.name, got, want)
+		}
+		// The age ends one cell short of the row's edge, never on it.
+		if got, want := cellOf(t, row, age)+text.Width(age), width-1; got != want {
+			t.Fatalf("the %s age ends on cell %d, want one cell short of %d", c.name, got, want)
+		}
+	}
+}
+
+// TestAPanelTrailingRowKeepsItsV040Bytes pins the plain surface, which is where a
+// v0.4.0 caller reads a row's bytes: on the panel the gutter carries no tint, so
+// merging the spare room and the trailing gap into one span writes the same cells
+// and the same bytes the two spans of v0.4.0 wrote.
+func TestAPanelTrailingRowKeepsItsV040Bytes(t *testing.T) {
+	truecolor(t)
+	const width = 44
+	const description, trailing = "Command bar", "herdr-suite"
+
+	roles := list.RowRoles(false)
+	row := list.Entry{
+		Roles:       roles,
+		Last:        false,
+		Description: description,
+		Trailing:    trailing,
+		Width:       width,
+	}.Render()
+
+	gutter := width - 5 - len(description) - len(trailing)
+	want := list.Row(roles, false, description) + strings.Repeat(" ", gutter) + trailing
+	if row != want {
+		t.Fatalf("the panel row drew %q, want %q", row, want)
+	}
+	if got := text.Width(row); got != width {
+		t.Fatalf("the panel row is %d cells wide, want %d", got, width)
 	}
 }

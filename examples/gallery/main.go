@@ -72,6 +72,7 @@ var states = []state{
 	{Name: "chips", Width: 80, Height: 19, Draw: chips},
 	{Name: "rows", Width: 80, Height: 14, Draw: rows},
 	{Name: "table", Width: 88, Height: 14, Draw: table},
+	{Name: "nested", Width: 88, Height: 16, Draw: nested},
 	{Name: "hints-page-1", Width: 60, Height: 10, Draw: func(w, h int) string { return hintBar(w, h, 0) }},
 	{Name: "hints-page-2", Width: 60, Height: 10, Draw: func(w, h int) string { return hintBar(w, h, 1) }},
 	{Name: "empty", Width: 60, Height: 9, Draw: empty},
@@ -550,6 +551,87 @@ func table(width, height int) string {
 		),
 	)
 	s.Bottom[0] = f.Rule()
+	return s.Popup(width, height, body)
+}
+
+// nested is the switched session with its workspaces hung under it: a child row
+// draws its own guide under the parent's continuation column, which keeps the
+// parent's guide open when the parent has a sibling below it and stays blank when
+// the parent closes the group. The hovered and the selected child show that a
+// nested row is a row like any other: the tint runs through the continuation
+// column, and on the selection the accent edge takes its first cell.
+func nested(width, height int) string {
+	s := screen(width, "herdr", "workspaces")
+	f := s.Frame
+	content := f.ContentWidth()
+	s.Top = []string{
+		s.Row(width, text.Join(
+			theme.Muted.Render("nested rows"),
+			theme.TealBold.Render("RUNNING 2")+theme.Dot()+theme.Muted.Render("2 sessions"),
+			content,
+		)),
+		f.Rule(),
+	}
+
+	// One width for the workspace names, so their counts start on the same cell and
+	// a child's facts line up under its siblings'.
+	labelWidth := 6
+	child := func(roles list.Roles, parentLast, last bool, label, counts, agent string) string {
+		description := roles.Pad(roles.Name.Render(label), labelWidth) +
+			roles.Gap(2) + roles.Muted.Render(counts)
+		if agent != "" {
+			description += roles.Gap(2) + roles.AgentState(agent)
+		}
+		return list.Entry{
+			Roles:       roles,
+			Last:        last,
+			Parent:      &list.Parent{Last: parentLast},
+			Description: description,
+			Width:       content,
+		}.Render()
+	}
+	session := func(roles list.Roles, last bool, name, facts string, marked bool) string {
+		description := roles.Name.Render(name) + "  " + roles.Muted.Render(facts)
+		if marked {
+			// State that outlives the selection: only the default session carries it.
+			description += list.Mark(roles)
+		}
+		return list.Entry{
+			Roles:       roles,
+			Last:        last,
+			Description: description,
+			Width:       content,
+		}.Render()
+	}
+
+	panel := list.RowRoles(false)
+	body := s.Rows(width,
+		list.Section("running", 2),
+		session(panel, false, "Command bar", "herdr · 3 tabs", true),
+		child(panel, false, false, "web", "3 tabs · 2 panes", "working"),
+		child(list.RowRolesFor(list.State{Hovered: true}), false, true, "docs", "1 tab · 1 pane", "idle"),
+		session(panel, true, "Agent bench", "herdr · 1 tab", false),
+		// The parent closes the group, so the continuation column stays blank and the
+		// child's guide closes the branch on its own.
+		child(panel, true, false, "api", "2 tabs · 4 panes", "working"),
+		child(list.RowRolesFor(list.State{Selected: true}), true, true, "work", "1 tab · 2 panes", "idle"),
+	)
+
+	s.Bottom = s.Rows(width,
+		"",
+		frame.Footer(
+			theme.AccentBold.Render("Command bar")+theme.Dot()+theme.Green.Render("prefix+k"),
+			theme.Muted.Render("2 / 2 shown"),
+			content,
+		),
+		"",
+	)
+	s.Bottom[0] = f.Rule()
+	s.Bottom[2] = s.Row(width, chip.Hints(content,
+		chip.Hint{Key: "enter", Label: "attach"},
+		chip.Hint{Key: "↑↓", Label: "move"},
+		chip.Hint{Key: "esc", Label: "close"},
+	))
 	return s.Popup(width, height, body)
 }
 

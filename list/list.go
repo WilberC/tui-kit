@@ -202,7 +202,9 @@ func Guide(role lipgloss.Style, last bool) string {
 // Row renders one listed entry: the indent and tree guide its position asks for,
 // then the body the caller composed. On a selected row the indent is tinted, so
 // the background reaches the row's edge, and the caller wraps the result in
-// SelectedRow to add the accent edge.
+// SelectedRow to add the accent edge. A row that hangs under another one is drawn
+// through Entry.Parent, which prefixes this guide with the parent's continuation
+// column.
 func Row(roles Roles, last bool, body string) string {
 	guide := "├─"
 	if last {
@@ -233,10 +235,30 @@ func SelectedRow(row string, width int) string {
 // body starts: two for the indent, two for the guide, one after it.
 const rowIndent = 5
 
+// nestIndent is where a nested row's own guide starts: its parent's continuation
+// column, which is the parent's indent and guide, then the row's own indent and
+// guide. A child therefore starts five cells past its parent.
+const nestIndent = 2 * rowIndent
+
+// guideOpen is the tree guide a nested row keeps open under its parent: the column
+// continues the parent's guide instead of leaving a gap in it.
+const guideOpen = "│"
+
 // TrailingGap is the least room a row keeps between its description and its
 // trailing column: two cells of the row's own background, so the last two columns
 // of a table never touch and the selection or hover tint runs through the gutter.
 const TrailingGap = 2
+
+// Parent is the row a nested entry hangs under: the parent's place in its group.
+// A nested entry draws its own guide under the parent's continuation column, which
+// keeps the parent's guide open when the parent has a sibling below it and stays
+// blank when the parent closes the group — the shape a workspace list nested under
+// its session has.
+type Parent struct {
+	// Last says whether the parent closes its group. A last parent leaves the
+	// continuation column blank, so the child's own guide closes the branch.
+	Last bool
+}
 
 // Entry is one listed row: the roles it paints with, its place in its group, its
 // columns, and where it goes in a zone map. Rendering it records the row and its
@@ -247,10 +269,18 @@ const TrailingGap = 2
 // ids, so the rows that need no zone keep calling ChipRow. With an empty Cell it is
 // the row helper for a list that has no chip column: the entry draws exactly what
 // Row draws, still records the whole row under ID, and records no chip zone — a
-// session row lists itself without measuring a zone beside the kit's.
+// session row lists itself without measuring a zone beside the kit's. With a Parent
+// it is a nested row: its own guide hangs under the parent's continuation column,
+// and it records its own zone like any other row.
 type Entry struct {
 	Roles Roles
 	Last  bool
+	// Parent is the row this entry hangs under, or nil for a top-level row. Set it
+	// and the entry draws its own guide under the parent's continuation column, so
+	// a nested row keeps the tree closed without the product composing the indent
+	// by hand: the entry records its own zone at the same x and width the whole row
+	// covers, continuation column included.
+	Parent *Parent
 	// Cell is the row's first column: a chip slab (see chip.Cell), or empty for a
 	// row with no chip column.
 	Cell string
@@ -293,7 +323,7 @@ func (e Entry) Render() string {
 	if e.Width <= 0 {
 		return ""
 	}
-	row := Row(e.Roles, e.Last, e.body())
+	row := e.continuation() + Row(e.Roles, e.Last, e.body())
 	if e.Roles.Selected {
 		row = SelectedRow(row, e.Width)
 	} else {
@@ -304,9 +334,33 @@ func (e Entry) Render() string {
 		e.Zones.Add(e.ID, e.X, e.Y, e.Width, 1)
 	}
 	if e.ChipID != "" && text.Width(e.Cell) > 1 {
-		e.Zones.Add(e.ChipID, e.X+rowIndent, e.Y, text.Width(e.Cell)-1, 1)
+		e.Zones.Add(e.ChipID, e.X+e.indent(), e.Y, text.Width(e.Cell)-1, 1)
 	}
 	return row
+}
+
+// continuation is the parent's guide column of a nested entry: the cells its parent
+// spent before its own body, drawn as the parent's own background, with the
+// parent's guide kept open — or blank when the parent closes its group. A top-level
+// entry has no continuation.
+func (e Entry) continuation() string {
+	if e.Parent == nil {
+		return ""
+	}
+	glyph := e.Roles.Space.Render(" ")
+	if !e.Parent.Last {
+		glyph = e.Roles.Guide.Render(guideOpen)
+	}
+	return e.Roles.Space.Render("  ") + glyph + e.Roles.Space.Render("  ")
+}
+
+// indent is how many cells the entry spends before its body: its own tree guide,
+// or the parent's continuation column and its own guide.
+func (e Entry) indent() int {
+	if e.Parent != nil {
+		return nestIndent
+	}
+	return rowIndent
 }
 
 // body composes the cells the tree guide places: the chip cell, the description,
@@ -319,7 +373,7 @@ func (e Entry) body() string {
 	if e.Trailing == "" {
 		return content
 	}
-	available := e.Width - rowIndent
+	available := e.Width - e.indent()
 	if available <= 0 {
 		// The row is narrower than its own indent: there is no column to align, so
 		// the description keeps what the frame can show.
@@ -328,7 +382,10 @@ func (e Entry) body() string {
 	column := e.trailingColumnWidth()
 	if room := available - column - TrailingGap; room >= 0 {
 		content = text.Clip(content, room)
-		return content + e.Roles.Gap(room-text.Width(content)) + e.Roles.Gap(TrailingGap) + e.trailingColumn(column)
+		// The spare room and the gutter are one run of the row's own background, so
+		// the row carries a single tinted span between its columns — the bytes a
+		// hand-aligned column writes.
+		return content + e.Roles.Gap(room-text.Width(content)+TrailingGap) + e.trailingColumn(column)
 	}
 	// The row is too narrow for both columns: the trailing column keeps the edge
 	// and the description gives way, the way a line's right side stays flush.

@@ -98,10 +98,10 @@ func TestATrailingColumnEndsOnTheRowEdge(t *testing.T) {
 		if gap < list.TrailingGap {
 			t.Fatalf("the %s row leaves %d cells between its columns, want at least %d", c.name, gap, list.TrailingGap)
 		}
-		// The spare room and the gutter are both the row's own background, so they
-		// are drawn as two gaps and never as one plain run.
-		if want := painted + roles.Gap(gap-list.TrailingGap) + roles.Gap(list.TrailingGap) + source; !strings.Contains(row, want) {
-			t.Fatalf("the %s row does not carry the row's own background between its columns: %q", c.name, row)
+		// The spare room and the gutter are one run of the row's own background, so
+		// the row carries a single tinted span between its columns.
+		if want := painted + roles.Gap(gap) + source; !strings.Contains(row, want) {
+			t.Fatalf("the %s row does not carry the row's own background between its columns as one span: %q", c.name, row)
 		}
 	}
 
