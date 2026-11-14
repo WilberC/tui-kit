@@ -16,8 +16,8 @@ herdr-suite and herdr-utils, extracted from their tested code, plus the design g
 | ID | Specs | Route | Commit |
 | --- | --- | --- | --- |
 | T1 | S1-S3, S5 | worker | v0.1.0 |
-| T2 | S4 (herdr-suite) | worker | pending |
-| T3 | S4 (herdr-utils) | worker | pending |
+| T2 | S4 (herdr-suite) | worker | herdr-suite d1d6f3b |
+| T3 | S4 (herdr-utils) | worker | herdr-utils c8ade76 |
 
 ## Log
 
@@ -25,3 +25,4 @@ herdr-suite and herdr-utils, extracted from their tested code, plus the design g
 - L2 (2026-11-13): owner decisions: Go module in its own repo; public; after closing the selection fix.
 - L3 (2026-11-14): "tui-kit esta bien" — repo created: github.com/WilberC/tui-kit (public, MIT).
 - L4 (2026-11-14): T1 built. Module `github.com/WilberC/tui-kit` (go 1.27.3, lipgloss v1.1.0, x/ansi v0.10.1, termenv v0.16.0) with packages `theme/`, `text/`, `chip/`, `list/`, `frame/`, `spinner/`, extracted from herdr-suite `internal/ui` and herdr-utils `internal/which`; `DESIGN.md` is the canonical visual guide, `README.md` the entry point, `examples/demo` the visual check. Evidence: `go test ./...` 52 tests pass, `go vet ./...` clean, `gofmt -l .` empty; captures at 180/140/80 in /tmp/tui-kit-shots (demo-180/140/80.png) reviewed by eye; palette pinned in theme (no hex outside `theme/`, test-enforced); rendering at call time pinned by profile tests. Commit pending, parent owns it.
+- L5 (2026-11-14): T2 shipped in herdr-suite d1d6f3b: internal/ui deleted, 17/17 captured states byte-identical. T3 shipped in herdr-utils c8ade76: every state cell-identical; accepted byte changes are the canonical teal #73daca, the header rule body in the guide role, and an ellipsis on cuts below 65 columns. Known gap: chip.Hints stops at the first hint that does not fit instead of skipping ahead (visible only below ~65 columns).
