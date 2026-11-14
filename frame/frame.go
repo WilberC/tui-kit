@@ -417,15 +417,25 @@ func (s Surface) Rows(paneWidth int, contents ...string) []string {
 // height minus the two borders, the Top and Bottom rows and the body's two
 // padding rows. A product pages or scrolls its content to fit this count.
 func (s Surface) BodyRows(paneHeight int) int {
-	return max(0, s.Room(paneHeight)-2*BodyPadding)
+	return s.BodyRowsFor(paneHeight, len(s.Top), len(s.Bottom))
+}
+
+// BodyRowsFor is how many content rows the body gets when the surface draws
+// topRows header rows and bottomRows footer rows: the same count BodyRows answers
+// once those rows exist, but available before the surface holds them. It is how a
+// product plans a body it has not composed yet — the header that names the body's
+// page is one of the rows it counts — so planning never needs a placeholder row.
+func (s Surface) BodyRowsFor(paneHeight, topRows, bottomRows int) int {
+	top, bottom := s.edgeCounts(paneHeight, topRows, bottomRows)
+	return max(0, s.Height(paneHeight)-2-top-bottom-2*BodyPadding)
 }
 
 // Room is how many lines the body region takes inside the frame, padding rows and
 // spare room included: the clamped height minus the borders and the Top and
 // Bottom rows it actually draws.
 func (s Surface) Room(paneHeight int) int {
-	top, bottom := s.edges(paneHeight)
-	return max(0, s.Height(paneHeight)-2-len(top)-len(bottom))
+	top, bottom := s.edgeCounts(paneHeight, len(s.Top), len(s.Bottom))
+	return max(0, s.Height(paneHeight)-2-top-bottom)
 }
 
 // BodyTop is the frame-content row of the body's first content line: the Top rows
@@ -521,19 +531,24 @@ func (s Surface) compose(paneWidth, paneHeight int, body []string) (Frame, []str
 	return f, rows, box
 }
 
-// edges is the Top and Bottom rows the frame actually draws. A pane too short for
-// both keeps the footer's last rows, because the keys are what the user needs,
-// and gives the header whatever is left.
+// edges is the Top and Bottom rows the frame actually draws: as many of them as
+// the interior holds, which is what edgeCounts decides.
 func (s Surface) edges(paneHeight int) (top, bottom []string) {
-	top, bottom = s.Top, s.Bottom
+	topRows, bottomRows := s.edgeCounts(paneHeight, len(s.Top), len(s.Bottom))
+	return s.Top[:topRows], s.Bottom[len(s.Bottom)-bottomRows:]
+}
+
+// edgeCounts is how many Top and Bottom rows fit in the frame's interior. A pane
+// too short for both keeps the footer's last rows, because the keys are what the
+// user needs, and gives the header whatever is left.
+func (s Surface) edgeCounts(paneHeight, topRows, bottomRows int) (top, bottom int) {
 	interior := max(0, s.Height(paneHeight)-2)
-	if len(top)+len(bottom) <= interior {
-		return top, bottom
+	topRows, bottomRows = max(0, topRows), max(0, bottomRows)
+	if topRows+bottomRows <= interior {
+		return topRows, bottomRows
 	}
-	if len(bottom) > interior {
-		bottom = bottom[len(bottom)-interior:]
-	}
-	return top[:max(0, interior-len(bottom))], bottom
+	bottom = min(bottomRows, interior)
+	return max(0, interior-bottom), bottom
 }
 
 // bodyBlock builds the body's rows: a blank row, the content, the room that is

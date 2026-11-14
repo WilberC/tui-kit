@@ -128,8 +128,16 @@ Rules:
   whose hints change (a confirmation gains its gold `y`) starts again on page 0
   without carrying a reset of its own; `HintBar.Page` still names a page when a
   product wants one.
+- **The reset happens when the bar draws**, not when the hint set is built: the
+  first render of a different set is the one that starts it on page 0, so a model
+  renders the bar once per update. Rendering twice in one update, with two
+  different sets, is a model bug the bar cannot see.
 - **One hint may carry its own slab** (`Hint.Slab`), so the gold `y` of a
   confirmation keeps its meaning while its neighbours keep the default.
+- **A chip may carry the accent instead of prose** (`list.Roles.ChipAccent`): a
+  keybinding guide's binding is a token on the same slab, with the accent label.
+  The role follows the row's surface, so no product overwrites `Roles.Chip` to
+  paint one column differently.
 
 Page 1 and page 2 of the same bar at 60 cells:
 
@@ -156,11 +164,16 @@ The selection is a **tint**, not a painted bar:
 - The tint runs to the row's full width. A tint that stops mid-row reads as a
   broken highlight.
 - A chip on the selected row uses `chip on selection`, one step brighter, so the
-  token still reads as a token on the darker background.
+  token still reads as a token on the darker background. A chip that carries the
+  product's accent (`Roles.ChipAccent`, §3) steps the same way and keeps the accent
+  label: the accent is the chip's meaning, not its surface.
 - **Exactly one row** carries the tint on a screen.
 - **The row under the pointer wears a fainter tint** (`theme.HoverBG`), never the
   selection's: it is a preview of what a click would select. Selection wins over
-  hover, and a hovered row carries no `▌` and no `◆` (§11).
+  hover, and a hovered row carries no `▌`: a cursor mark belongs to the selection.
+  A **fact glyph stays**: the gold `◆` of the default item, a green live `●` and a
+  red failed `○` say what the row *is*, not where the cursor is, so hovering never
+  changes them (§11).
 
 Selection and hover, captured at 80x14 — the selected row first, the hovered row
 directly under it:
@@ -185,6 +198,39 @@ directly under it:
   first; the summary stays flush with the inner edge.
 - Nothing ends a line with trailing spaces outside the frame's padding, and no
   row repeats a space before a separator.
+
+### A table's last column
+
+A row that ends in a short, stable fact — a table's source, a count, a mode — closes
+with that fact in a column flush against the row's edge, never stuffed into the
+description with hand-padded spaces:
+
+```
+│   ├─  prefix+k  Command bar                                            herdr-suite  │
+│   ├─  prefix+p  Plugin manager                                         herdr-suite  │
+│   ├─  ctrl+g    Lazygit                                                custom       │
+```
+
+- `list.Entry.Trailing` owns the column: it sits on the row's last cells, and the
+  description is clipped first, with `…`, when the two do not fit.
+- `list.TrailingGap` (two cells) is the least the two columns keep between them,
+  and every cell of it is the row's own background (`Roles.Gap`), so the selection
+  and the hover tint run unbroken up to the trailing column.
+- **A table reserves the column width** (`Entry.TrailingWidth`): the column ends on
+  the row's edge and its text is left-aligned inside it, so every row's value starts
+  on the same cell — the cell the table's header names. The cells a value leaves
+  empty are the row's own background, so the tint reaches the row's edge instead of
+  stopping inside the last word. Reserve one cell of air after the longest value.
+- A table's header names the cells its values land on; `list.Entry` spends five
+  cells of indent and tree guide before its body.
+- **Never pad the right side of the description by hand.** The gutter is the row's:
+  a painted gutter breaks the tint before the last column and drifts on a narrow
+  pane.
+
+The table at 88x14 — the selected and the hovered row above the panel rows, the
+accent chip on every row, the source column on one cell and flush with the edge:
+
+![A table: the selected and hovered rows tinted through the gutter and up to the row's edge behind a left-aligned source column, and the accent chip on the panel, hover and selection](docs/gallery/table.png)
 
 ## 6. Typography
 
@@ -276,7 +322,9 @@ Rules:
   footer below it, or two sections stop being distinguishable. The body's usable
   rows are the clamped height minus the borders, the header rows, the footer rows
   and those two padding rows; `frame.Surface.BodyRows` answers the count, and a
-  product pages or scrolls its content against it.
+  product pages or scrolls its content against it. A header that must name the
+  page asks `BodyRowsFor(paneHeight, headerRows, footerRows)` **before** it
+  composes those rows, so the count costs no placeholder row.
 - **A frame smaller than its pane is centred** (`frame.Surface.Popup`): blank rows
   above and below it, never one large gap under the footer.
 - **In a column grid the padding and spare rows are grid rows too**
@@ -360,6 +408,11 @@ These are real regressions from the two products. Do not bring them back.
 | A mouse-only feature | A keyboard user lost an action that had no key. | Every click maps to a key: mouse-only is a bug. |
 | A hover as strong as the selection | The pointer competed with the cursor and the row the user chose disappeared. | A fainter tint, selection wins, no accent edge, no gold mark. |
 | Hand-rolled text selection in a screen that captures the mouse | A second, worse editor: no word boundaries, no scrollback, its own clipboard. | Let the terminal keep the drag; copy one value with one OSC 52 key. |
+| A hand-padded space before a table's last column | The gutter belonged to the caller: the tint broke before the column and a narrow row moved it. | `list.Entry.Trailing` owns the gutter (`TrailingGap`), tinted like the rest of the row. |
+| A table whose values start on different cells | A right-aligned last column reads as a column of numbers, not as one column; the eye cannot scan it and its header names no cell. | Reserve the column (`Entry.TrailingWidth`): every value starts on the header's cell, and the tint reaches the row's edge. |
+| A hovered row that loses a fact glyph | The default marker vanished under the pointer, so hovering looked like it changed what the row was. | Only the cursor mark (`▌`) is the selection's; the gold `◆` and the state glyphs stay. |
+| Overwriting `Roles.Chip` to paint one column | A second chip surface per screen, and the override had to remember the selection variant itself. | `Roles.ChipAccent` carries the accent on the panel, the hover and the selection. |
+| A hint bar rendered twice in one update | The second render saw a different set and sent it back to page 0, so the page the key chose never stuck. | The reset happens when the bar draws: render once per update. |
 
 ## 11. Mouse
 
@@ -387,7 +440,9 @@ Rules:
   the whole list is already visible. `frame.Surface.BodyRows` is the row count
   both the drawing and the scrolling use.
 - **Hover is a preview of the selection** in a fainter tint (§4). Selection wins
-  over hover, and a hovered row carries no `▌` and no `◆`.
+  over hover, and a hovered row carries no `▌`. A fact glyph — the gold `◆`, a
+  live `●`, a failed `○` — stays on a hovered row: it describes the row, not the
+  cursor.
 - **Keyboard parity, always.** A click is the cursor keys, a run is `enter`, and a
   click on the paging chip is `chip.PageKey`. The hint bar says so.
 - **Shift+drag still belongs to the terminal.** A program that captures the mouse
@@ -473,6 +528,7 @@ Two rules keep the images honest:
 | [columns.png](docs/gallery/columns.png) | §7, a three-column body at 160x13 |
 | [chips.png](docs/gallery/chips.png) | §3, the token surface at 80x19 |
 | [rows.png](docs/gallery/rows.png) | §4 and §11, selection and hover side by side at 80x14 |
+| [table.png](docs/gallery/table.png) | §5, a row's trailing column at 88x14 |
 | [hints-page-1.png](docs/gallery/hints-page-1.png), [hints-page-2.png](docs/gallery/hints-page-2.png) | §3, the paged hint bar at 60x10 |
 | [empty.png](docs/gallery/empty.png), [zero-match.png](docs/gallery/zero-match.png), [loading.png](docs/gallery/loading.png) | §9, the three states |
 | [demo-180x50.png](docs/gallery/demo-180x50.png), [demo-140x40.png](docs/gallery/demo-140x40.png), [demo-80x24.png](docs/gallery/demo-80x24.png) | the demo at its three captured sizes |
@@ -502,6 +558,16 @@ still on them:
 | `ui.StateGlyph`, `ui.StateWord` | `list.` |
 | `ui.Text` … `ui.ChipRed`, `ui.OnSelection` | `theme.` |
 | `ui.Spinner`, `ui.SpinnerFrames` | `spinner.Render`, `spinner.Frames` |
+
+v0.4.0 renames nothing; it adds the pieces both products were working around:
+
+| Workaround | New |
+| --- | --- |
+| `zone.Map.Add(id, 0, surface.BodyY(line), w, 1)` beside a hand-composed `list.Row` | `list.Entry` with an empty `Cell`: it draws the same row and records it. |
+| The trailing column built into `Description` with `roles.Space.Render("  ")` and `text.PadLeft` | `list.Entry.Trailing` + `list.TrailingGap`. |
+| `roles.Chip = theme.ChipAccent` on every row that is not selected | `list.Roles.ChipAccent` (and `theme.ChipAccentOnSelection` on the tint). |
+| `text.JoinDropRight(left, " "+right, width)` to buy a gutter | `text.JoinDropRight(left, right, width)`. |
+| A placeholder header row replaced after `BodyRows` becomes answerable | `frame.Surface.BodyRowsFor(paneHeight, headerRows, footerRows)`. |
 
 | Old (herdr-utils `internal/which`) | New |
 | --- | --- |

@@ -106,6 +106,12 @@ var (
 			Background(ColorChipOnSelection).
 			Foreground(ColorText).
 			Bold(true)
+	// ChipAccentOnSelection is the accent chip's slab on the tint: the accent
+	// label keeps its colour on the brighter token surface.
+	ChipAccentOnSelection = lipgloss.NewStyle().
+				Background(ColorChipOnSelection).
+				Foreground(ColorAccent).
+				Bold(true)
 )
 
 // Chips are the tokens of the interface: keys, modes and short state words. One

@@ -19,6 +19,10 @@ import (
 // and never as content.
 const Ellipsis = "…"
 
+// joinGap is the least air JoinDropRight leaves between its two sides: the right
+// side never touches the text it explains.
+const joinGap = 1
+
 // The glyphs of the kit's typography. Each one is a single cell, so a glyph
 // never shifts a column.
 const (
@@ -125,6 +129,11 @@ func PadLeft(s string, width int) string {
 // Join places left at the start and right at the end of width cells. When both
 // cannot fit, the left side is clipped first: the right side carries the short
 // facts a narrow window must keep.
+//
+// Join lays down no gutter of its own: at an exact fit the two sides touch. That
+// is the line every caller has rendered since the kit was extracted, so its bytes
+// stay as they are in v0.4.0; a caller that wants one cell of air either puts it
+// inside right (frame.Footer spends two) or uses JoinDropRight, which enforces it.
 func Join(left, right string, width int) string {
 	if gap := width - Width(left) - Width(right); gap >= 0 {
 		return left + strings.Repeat(" ", gap) + right
@@ -138,10 +147,14 @@ func Join(left, right string, width int) string {
 }
 
 // JoinDropRight places left at the start and right at the end of width cells,
-// like Join, and gives up the right side first: when both do not fit, right is
-// dropped whole and left stays readable. It is the join for a line whose right
-// side is a legend that may give way before the title it explains. Only when the
-// left side alone does not fit is it clipped, and that cut ends with an ellipsis.
+// like Join, keeps at least one plain cell between the two sides, and gives up
+// the right side first: when both do not fit with that gutter, right is dropped
+// whole and left stays readable. It is the join for a line whose right side is a
+// legend that may give way before the title it explains. Only when the left side
+// alone does not fit is it clipped, and that cut ends with an ellipsis.
+//
+// The gutter is the kit's, so a product stops buying it by padding the right side
+// with a leading space: the padded call drew exactly these bytes.
 func JoinDropRight(left, right string, width int) string {
 	if width <= 0 {
 		return ""
@@ -149,7 +162,7 @@ func JoinDropRight(left, right string, width int) string {
 	if right == "" {
 		return Clip(left, width)
 	}
-	if gap := width - Width(left) - Width(right); gap >= 0 {
+	if gap := width - Width(left) - Width(right); gap >= joinGap {
 		return left + strings.Repeat(" ", gap) + right
 	}
 	return Clip(left, width)

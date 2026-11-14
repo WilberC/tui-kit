@@ -87,6 +87,30 @@ view := surface.PopupZones(paneWidth, paneHeight, body, zones)
 id, hit := zones.Hit(clickX, clickY) // "row:0", "chip:0" or chip.PageZone
 ```
 
+An entry with no chip column leaves `Cell` empty: it draws exactly the row
+`list.Row` draws and still records its row zone, so a session row needs no
+hand-measured click target beside the kit's. A table's last column is
+`Entry.Trailing`, which closes on the row's edge with `list.TrailingGap` cells of
+the row's own background before it, so the tint runs through the gutter. A table
+also reserves the column (`TrailingWidth`): every value then starts on the same
+cell — the one its header names — and the cells a value leaves empty stay the row's
+own background, so the tint reaches the edge:
+
+```go
+row := list.Entry{Roles: roles, Last: false, Cell: cell,
+    Description:   roles.Name.Render("Command bar"),
+    Trailing:      roles.Muted.Render("herdr-suite"),
+    TrailingWidth: 12, // reserved: left-aligned on this cell, column flush right
+    Width:         content}
+```
+
+With `TrailingWidth` zero the column is as wide as its text and right-aligned
+against the row's edge, the v0.3.0 behaviour.
+
+A row's chip can carry the product's accent (`list.Roles.ChipAccent`, the guide's
+bindings) instead of its text role; the role follows the panel, the hover and the
+selection by itself, so no screen overrides `Roles.Chip`.
+
 The kit has no Bubbletea dependency: `tea.MouseMsg` becomes an id in ten lines in
 your update loop, and `DESIGN.md` §11 shows that pattern, the click rules (click
 selects, enter or a double click runs, nothing destructive on one click) and the
@@ -130,11 +154,11 @@ go run ./examples/gallery
 
 | Package | Holds | Depends on |
 | --- | --- | --- |
-| `theme/` | The Tokyo Night palette, the role styles, and the few compositions that are pure role arithmetic (`Dot`, `Label`, `OnSelection`). The only place a hex value may live. | lipgloss |
-| `text/` | Cell widths, clipping and ellipsis, `Fit`/`PadLeft`/`Join`/`JoinDropRight`/`Center`, short paths, relative ages, the typographic glyphs. | x/ansi |
-| `frame/` | `Frame` (titled border, rules, rows), `Layout`, `Float`, `Footer`, `Surface`/`Size` for a bounded, footer-pinned popup (`Recommended` bounds, `BodyRows`, `Row`/`Rows`, `Columns`, `BlankRow`, `RenderZones`/`PopupZones`), and the joined column grid (`ColumnRule`, `ColumnWidths`, `Grid`). | theme, text, zone |
+| `theme/` | The Tokyo Night palette, the role styles, and the few compositions that are pure role arithmetic (`Dot`, `Label`, `OnSelection`, `OnHover`). The accent chip's brighter slab (`ChipAccentOnSelection`) lives here too. The only place a hex value may live. | lipgloss |
+| `text/` | Cell widths, clipping and ellipsis, `Fit`/`PadLeft`/`Join`/`JoinDropRight`/`Center`, short paths, relative ages, the typographic glyphs. `JoinDropRight` keeps one cell between its sides; `Join` leaves the gutter to its caller, so its bytes do not move. | x/ansi |
+| `frame/` | `Frame` (titled border, rules, rows), `Layout`, `Float`, `Footer`, `Surface`/`Size` for a bounded, footer-pinned popup (`Recommended` bounds, `BodyRows` and `BodyRowsFor` for a count before the rows exist, `Row`/`Rows`, `Columns`, `BlankRow`, `RenderZones`/`PopupZones`), and the joined column grid (`ColumnRule`, `ColumnWidths`, `Grid`). | theme, text, zone |
 | `chip/` | `Chip`, `Pair`, `Cell`/`UnsetCell` chip columns, `Legend`, and the `HintBar` that pages hints behind `tab` instead of hiding them (`Hints` is its page-0 render; `RenderZones` records each chip and `chip.PageZone`). | theme, text, zone |
-| `list/` | `Roles`/`RowRoles`/`RowRolesFor` (selection and hover), the tree `Guide`, `Row`, `SelectedRow`, `ChipRow` and the zone-aware `Entry`, `Section`, agent states. | theme, text, zone |
+| `list/` | `Roles`/`RowRoles`/`RowRolesFor` (selection and hover, the plain and accent chip roles), the tree `Guide`, `Row`, `SelectedRow`, `ChipRow`, the zone-aware `Entry` (a chip column, no chip column, or a `Trailing` column, right-aligned or at a reserved `TrailingWidth`), `Section`, agent states. | theme, text, zone |
 | `zone/` | The hit-test map: named rectangles, `Hit(x, y)`, and the rewrite a surface applies (`Offset`, `Clip`). No I/O, no drawing. | nothing |
 | `clipboard/` | `OSC52(text)`: the sequence that sets the terminal's clipboard, and nothing else. | nothing |
 | `spinner/` | The four-frame work-in-progress tick; the caller owns the tick. | theme |

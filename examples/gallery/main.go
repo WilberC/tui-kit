@@ -71,6 +71,7 @@ var states = []state{
 	{Name: "columns", Width: 160, Height: 13, Draw: columns},
 	{Name: "chips", Width: 80, Height: 19, Draw: chips},
 	{Name: "rows", Width: 80, Height: 14, Draw: rows},
+	{Name: "table", Width: 88, Height: 14, Draw: table},
 	{Name: "hints-page-1", Width: 60, Height: 10, Draw: func(w, h int) string { return hintBar(w, h, 0) }},
 	{Name: "hints-page-2", Width: 60, Height: 10, Draw: func(w, h int) string { return hintBar(w, h, 1) }},
 	{Name: "empty", Width: 60, Height: 9, Draw: empty},
@@ -475,6 +476,80 @@ func rows(width, height int) string {
 		chip.Hint{Key: "↑↓", Label: "move"},
 		chip.Hint{Key: "esc", Label: "close"},
 	))
+	return s.Popup(width, height, body)
+}
+
+// table is the LIST look: a row whose last column is right-aligned to the row's
+// edge, with the selection and the pointer side by side so both tints can be judged
+// through the gutter that separates the description from the trailing column. The
+// chips carry the accent role, so the guide's bindings are the same token on the
+// panel, under the pointer and on the selection.
+func table(width, height int) string {
+	s := screen(width, "hu", "which")
+	f := s.Frame
+	content := f.ContentWidth()
+	s.Top = []string{
+		s.Row(width, text.Join(
+			theme.Muted.Render("trailing column"),
+			theme.TealBold.Render("LIST")+theme.Dot()+theme.Muted.Render("4 rows"),
+			content,
+		)),
+		f.Rule(),
+	}
+
+	chipWidth := chip.Width("prefix+k", "ctrl+g")
+	// The source column is reserved, so every value and its header start on the same
+	// cell; the spare cell after the longest value is the row's own background, so
+	// the tint runs to the row's edge behind the column.
+	sourceWidth := chip.Width("herdr-suite", "herdr-utils", "custom") + 1
+	// The names ride the same cells their values do: list.Entry spends five cells on
+	// the tree guide, and the chip column's padding places the label one cell later.
+	header := text.Fit(strings.Repeat(" ", 5)+chip.Cell(theme.Muted, "BINDING", chipWidth)+theme.Muted.Render("ENTRY"), content-sourceWidth)
+	header += theme.Muted.Render("SOURCE") + strings.Repeat(" ", sourceWidth-text.Width("SOURCE"))
+
+	rows := []struct {
+		key         string
+		description string
+		source      string
+		unset       bool
+		state       list.State
+	}{
+		{key: "prefix+k", description: "Command bar", source: "herdr-suite", state: list.State{Selected: true}},
+		{key: "prefix+p", description: "Plugin manager", source: "herdr-suite", state: list.State{Hovered: true}},
+		{key: "ctrl+g", description: "Lazygit", source: "custom"},
+		{key: text.Unset, description: "Open the bar", source: "herdr-utils", unset: true},
+	}
+
+	body := []string{
+		s.Row(width, header),
+		s.Row(width, theme.Quiet.Render(strings.Repeat(frame.Horizontal, content))),
+	}
+	for index, row := range rows {
+		roles := list.RowRolesFor(row.state)
+		cell, description := chip.Cell(roles.ChipAccent, row.key, chipWidth), roles.Name.Render(row.description)
+		if row.unset {
+			cell, description = chip.UnsetCell(roles.Muted, row.key, chipWidth), roles.Muted.Render(row.description)
+		}
+		body = append(body, s.Row(width, list.Entry{
+			Roles:         roles,
+			Last:          index == len(rows)-1,
+			Cell:          cell,
+			Description:   description,
+			Trailing:      roles.Muted.Render(row.source),
+			TrailingWidth: sourceWidth,
+			Width:         content,
+		}.Render()))
+	}
+
+	s.Bottom = s.Rows(width,
+		"",
+		frame.Footer(
+			theme.AccentBold.Render("Command bar")+theme.Dot()+theme.Green.Render("prefix+k"),
+			theme.Muted.Render("4 / 4 shown"),
+			content,
+		),
+	)
+	s.Bottom[0] = f.Rule()
 	return s.Popup(width, height, body)
 }
 

@@ -58,3 +58,44 @@ func TestJoinDropRightHandlesAnEmptySide(t *testing.T) {
 		t.Fatalf("JoinDropRight did not clip the lone left side: %q", got)
 	}
 }
+
+// TestJoinDropRightKeepsOneCellBetweenTheSides pins the gutter rule: the two sides
+// never touch, even when they fit exactly, so a product stops padding the right
+// side with a leading space to buy that cell. The result is the same line the
+// padded call used to draw, at every width.
+func TestJoinDropRightKeepsOneCellBetweenTheSides(t *testing.T) {
+	const left, right = "left", "right"
+
+	// Exactly enough room for both, no room for the gutter: the right side gives
+	// way whole, exactly as it did when the caller padded it with a space.
+	if got, want := text.JoinDropRight(left, right, 9), left; got != want {
+		t.Fatalf("JoinDropRight at an exact fit = %q, want the trimmed %q", got, want)
+	}
+	// One spare cell is the gutter, not padding around it.
+	if got, want := text.JoinDropRight(left, right, 10), left+" "+right; got != want {
+		t.Fatalf("JoinDropRight with one spare cell = %q, want %q", got, want)
+	}
+	if got, want := text.JoinDropRight(left, right, 14), left+strings.Repeat(" ", 5)+right; got != want {
+		t.Fatalf("JoinDropRight = %q, want %q", got, want)
+	}
+	// A right side that must give way still gives way whole, and the left is only
+	// clipped when it alone does not fit.
+	if got, want := text.JoinDropRight(left, right, 8), left; got != want {
+		t.Fatalf("JoinDropRight at 8 cells = %q, want %q", got, want)
+	}
+	if got, want := text.JoinDropRight(left, right, 3), "le"+text.Ellipsis; got != want {
+		t.Fatalf("JoinDropRight at 3 cells = %q, want the honest cut %q", got, want)
+	}
+}
+
+// TestJoinKeepsItsExactFitOutput pins why only JoinDropRight gained the gutter:
+// Join's bytes must not move in v0.4.0, so an exact fit still closes the line with
+// the two sides touching. A caller that wants air passes it inside the right side.
+func TestJoinKeepsItsExactFitOutput(t *testing.T) {
+	if got, want := text.Join("left", "right", 9), "leftright"; got != want {
+		t.Fatalf("Join at an exact fit = %q, want its unchanged %q", got, want)
+	}
+	if got, want := text.Join("left", "right", 14), "left"+strings.Repeat(" ", 5)+"right"; got != want {
+		t.Fatalf("Join = %q, want %q", got, want)
+	}
+}
