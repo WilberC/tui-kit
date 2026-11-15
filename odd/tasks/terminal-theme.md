@@ -90,3 +90,7 @@ default look renders byte-identical.
   twenty channel steps of the built-in palette from Tokyo Night's own
   terminal colours; teal wears the terminal's own cyan (#7dcfff), by design.
   Types: rgb helpers use the (rgb, bool) pattern, not pointers.
+- L6 (2026-11-15): T4 committed. roleByName is a map of setters, not of
+  field pointers; auto takes the colours function so the fallback paths are
+  pinned without a real tty. Evidence: `go test ./...` green, vet/gofmt
+  clean.
