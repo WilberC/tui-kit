@@ -94,3 +94,10 @@ default look renders byte-identical.
   field pointers; auto takes the colours function so the fallback paths are
   pinned without a real tty. Evidence: `go test ./...` green, vet/gofmt
   clean.
+- L7 (2026-11-15): T5 committed; the feature is closed. Gallery regenerated
+  byte-identical — one anomalous first run (a pre-existing freeze
+  environment drift, reproduced identically at HEAD) was chased down and
+  discarded with the real evidence: `git show HEAD:docs/gallery/nested.png`
+  equals the regenerated sha256, and the demo's truecolor ANSI is
+  byte-identical between HEAD and this branch. Evidence: `go test ./...`
+  green, `go vet ./...` clean, `gofmt -l .` empty.
