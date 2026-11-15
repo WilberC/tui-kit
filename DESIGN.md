@@ -43,6 +43,11 @@ content; `accent` is the product's voice and marks what the user is looking at.
 They are separate roles because a frame drawn in the accent's brightness competes
 with the selected row.
 
+The table above is `theme.TokyoNight()`, the built-in theme: the kit renders
+with it until a program installs another one, and every capture in this guide
+was taken with it. §15 says how another theme is installed, and what a system
+theme generated from the terminal's own colours promises about this table.
+
 ## 2. Frame anatomy
 
 Top to bottom, every surface is the same seven parts:
@@ -454,6 +459,8 @@ These are real regressions from the two products. Do not bring them back.
 | A hovered row that loses a fact glyph | The default marker vanished under the pointer, so hovering looked like it changed what the row was. | Only the cursor mark (`▌`) is the selection's; the gold `◆` and the state glyphs stay. |
 | Overwriting `Roles.Chip` to paint one column | A second chip surface per screen, and the override had to remember the selection variant itself. | `Roles.ChipAccent` carries the accent on the panel, the hover and the selection. |
 | A hint bar rendered twice in one update | The second render saw a different set and sent it back to page 0, so the page the key chose never stuck. | The reset happens when the bar draws: render once per update. |
+| A theme installed in the middle of a render | Half the frame painted with one palette, half with another. | Install at start-up, or when late terminal colours arrive — never mid-render (§15). |
+| A role guessed from the ANSI-16 palette | A semantic colour became whatever the terminal's slot happened to be, with no tint and no contrast behind it. | `theme.System` derives from one `query.Palette` with the contrast gates; never guess (§15). |
 
 ## 11. Mouse
 
@@ -633,3 +640,60 @@ background run instead of two. Every cell, every glyph and every role is identic
 | `chipPair`, `chipCell`, `hintsLine`, legend items | `chip.Pair`, `chip.Cell`/`chip.UnsetCell`, `chip.Hints`, `chip.Legend` |
 | `styleSelectEdge` / `styleSelectChip` / `styleSelectText` / `styleSelectMuted` | `theme.SelectionEdge`, `theme.ChipOnSelection`, `theme.TextOnSelection`, `theme.MutedOnSelection` |
 | `roleText` … `roleChipBG`, `styleText` … `styleSelectMuted` | `theme.ColorText` … `theme.ChipRed` |
+
+## 15. Themes
+
+The palette §1 documents is the built-in theme, `theme.TokyoNight()`, and the
+only theme the kit renders with until a program installs another one. A theme
+is one resolution of the fifteen roles; each role is a `#rgb`/`#rrggbb` hex, a
+256-colour index written as a decimal string, or the empty string — the empty
+role is the terminal's own default, and renders no colour escape at all.
+
+- **`theme.Use(them)`** installs a theme: every role style in the kit is
+  rebuilt, and every surface that captured roles at init (the list's three
+  role sets) rebuilds with them through the hook `theme.OnUse` registers. A
+  theme whose roles are none of the three shapes is rejected, and the previous
+  theme stays in force. Install at start-up, or again when the terminal's
+  colours arrive late — never in the middle of a render.
+- **`theme.Active()`** is the theme in force; **`theme.TokyoNight()`** is the
+  built-in, the fallback every failure path ends in.
+- **`theme.System(palette)`** generates a theme from what the terminal
+  reported about itself — one `query.Palette` from `query.Colors()`. The
+  semantic colours come from the ANSI slots (the brighter of each pair: blue
+  is the accent, yellow is gold, cyan is teal, green is green, red is red);
+  the text is the terminal's foreground once it clears the 4.5:1 contrast
+  gate against its own background; and every surface role — muted, guide,
+  border, chip, selection, hover and their on-tint lifts — is a mix of the
+  background toward the text or the accent, in the same proportions the
+  built-in palette sits at. A Tokyo Night terminal generating its own theme
+  lands within twenty channel steps of the §1 table, which the golden test
+  pins; the teal it wears is the terminal's own cyan, not `#73daca`. A half
+  answer is never guessed at: an unusable palette is the built-in theme.
+- **`theme.LoadFile(path)`** (and `theme.LoadJSON`) read a custom theme from
+  a JSON file — a partial override over the built-in, naming only the roles
+  it changes, each a hex, an index (quoted or not) or empty. A role name the
+  palette does not have is an error, so a typo is caught instead of silently
+  ignored:
+
+  ```json
+  {
+    "name": "gruvbox",
+    "colors": { "text": "#ebdbb2", "accent": 196, "chip": "" }
+  }
+  ```
+
+- **`theme.Auto(setting, dir)`** is the whole policy in one call: a named
+  setting loads `<dir>/<setting>.json` from the directory the product keeps
+  its themes in, an empty setting asks the terminal and generates the system
+  theme, and every failure along the way — a missing file, a broken one, a
+  terminal that cannot be asked — is the built-in Tokyo Night palette. A
+  program with no theme setting and no tty renders exactly what it rendered
+  before this section existed.
+
+`query.Colors()` is the kit's only I/O. One batched query — the default
+foreground, the default background, the sixteen slots — written to `/dev/tty`
+in raw mode, the replies read until the DA1 reply closes the batch or the
+100 ms timeout expires, and the palette adopted all-or-nothing: a terminal
+that answers only part of the batch yields no palette, so the caller falls
+back to the built-in theme. Output that is not a terminal is never written
+to: `Colors` returns `ErrNotTTY` without writing a byte.

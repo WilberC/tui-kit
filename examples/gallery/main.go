@@ -88,6 +88,14 @@ func main() {
 	only := flag.String("only", "", "regenerate only the state with this name")
 	flag.Parse()
 
+	// The gallery is the approved look, so it pins the built-in theme
+	// explicitly: a capture never depends on what the terminal wearing it
+	// reports about itself.
+	if err := theme.Use(theme.TokyoNight()); err != nil {
+		fmt.Fprintf(os.Stderr, "gallery: %v\n", err)
+		os.Exit(1)
+	}
+
 	if err := run(*output, *only); err != nil {
 		fmt.Fprintf(os.Stderr, "gallery: %v\n", err)
 		os.Exit(1)

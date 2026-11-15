@@ -146,6 +146,30 @@ go run ./examples/demo -w 80 -h 24 -zones         # what a click can hit, and wh
 go run ./examples/demo -w 80 -h 24 -at 30,12      # what one cell hits
 ```
 
+## Themes
+
+The palette is `theme.TokyoNight()`, the built-in theme, and the only one the
+kit renders with until a program installs another one. A theme is one
+resolution of the fifteen roles, each role a hex, a 256 index, or `""` — the
+terminal's own default.
+
+```go
+// Ask the terminal for its own colours and generate a theme from them.
+// Whatever fails — no tty, a terminal that does not answer, a half answer —
+// is the built-in Tokyo Night palette.
+theme.Use(theme.Auto("", themesDir))
+
+// Or pick a custom theme: a partial override over the built-in, in JSON.
+theme.Use(theme.Auto("gruvbox", themesDir))
+```
+
+`theme.LoadFile`/`theme.LoadJSON` read the JSON (a file names only the roles it
+changes; an unknown role is an error, so a typo is caught), `theme.System`
+generates a theme from one `query.Palette` — the semantic colours from the
+ANSI slots, every surface role a contrast-checked mix of the background toward
+the text or the accent — and `query.Colors` is the kit's only I/O: one batched
+OSC query, all-or-nothing, `ErrNotTTY` on anything that is not a terminal.
+
 ## Gallery
 
 `docs/gallery/` holds every documented state, captured from the real code, and

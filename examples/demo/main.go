@@ -131,11 +131,13 @@ func main() {
 	flag.Parse()
 
 	// The demo is also a capture tool: a pipe has no terminal, so force the
-	// truecolor profile instead of letting lipgloss fall back to Ascii.
+	// truecolor profile instead of letting lipgloss fall back to Ascii. It also
+	// pins the built-in theme: a capture never asks the terminal it runs in.
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	if *plain {
 		lipgloss.SetColorProfile(termenv.Ascii)
 	}
+	_ = theme.Use(theme.TokyoNight())
 
 	demo := renderAt(*width, *height, *page, *hover)
 	if *printZones {
