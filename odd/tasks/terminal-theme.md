@@ -79,3 +79,14 @@ default look renders byte-identical.
   agarrar buenas practicas de ahi y mejorar por lo que no tenemos que hacer
   todo desde 0" — authorization to implement the full scope mirroring pi.
   Feature doc created; branch `feat/terminal-theme`.
+- L4 (2026-11-15): T2 committed b8eac61 (writer delegation refused by the
+  runtime, built inline). Test-first: RED as undefined `queryBytes`/`run`/
+  `normalizeRGB`; three test-side expectation bugs fixed during GREEN
+  (component rescale arithmetic, sentinel-first semantics, late-junk
+  expectation), one real behaviour added: parse stops at the DA1 sentinel and
+  an invalid rgb component never overwrites a valid answer; EOF ends the
+  read. Evidence: `go test ./...` green, vet/gofmt clean.
+- L5 (2026-11-15): T3 committed. Golden test lands all derived roles within
+  twenty channel steps of the built-in palette from Tokyo Night's own
+  terminal colours; teal wears the terminal's own cyan (#7dcfff), by design.
+  Types: rgb helpers use the (rgb, bool) pattern, not pointers.
