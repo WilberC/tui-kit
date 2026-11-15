@@ -47,7 +47,21 @@ type Roles struct {
 	Red   lipgloss.Style
 }
 
+// The three role sets rebuild from the active theme: list builds them at init
+// and again every time the theme changes, through the hook the theme package
+// calls on Use.
 var (
+	panelRoles     Roles
+	hoverRoles     Roles
+	selectionRoles Roles
+)
+
+func init() {
+	rebuildRoles()
+	theme.OnUse(rebuildRoles)
+}
+
+func rebuildRoles() {
 	panelRoles = Roles{
 		Name:       theme.Text,
 		Muted:      theme.Muted,
@@ -88,7 +102,7 @@ var (
 		Teal:       theme.OnSelection(theme.Teal),
 		Red:        theme.OnSelection(theme.Red),
 	}
-)
+}
 
 // State is how a row is marked: the highlighted row, the row under the pointer,
 // or neither. Selecting wins, so a row that is both stays the selection.

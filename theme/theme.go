@@ -64,23 +64,24 @@ func Palette() []lipgloss.Color {
 // Roles, as styles a view composes with. Text is prose, Muted is explanation,
 // Quiet is structure, Border is the frame, Accent is the product's voice, Gold
 // marks state that outlives the selection, Teal marks work in progress, Green
-// marks live things and Red marks failure.
+// marks live things and Red marks failure. Each one renders with the theme Use
+// installed; the declarations are rebuilt by use.go.
 var (
-	Text       = lipgloss.NewStyle().Foreground(ColorText)
-	Strong     = Text.Bold(true)
-	Muted      = lipgloss.NewStyle().Foreground(ColorMuted)
-	Quiet      = lipgloss.NewStyle().Foreground(ColorGuide)
-	Border     = lipgloss.NewStyle().Foreground(ColorBorder)
-	Accent     = lipgloss.NewStyle().Foreground(ColorAccent)
-	AccentBold = Accent.Bold(true)
-	Gold       = lipgloss.NewStyle().Foreground(ColorGold)
-	GoldBold   = Gold.Bold(true)
-	Teal       = lipgloss.NewStyle().Foreground(ColorTeal)
-	TealBold   = Teal.Bold(true)
-	Green      = lipgloss.NewStyle().Foreground(ColorGreen)
-	GreenBold  = Green.Bold(true)
-	Red        = lipgloss.NewStyle().Foreground(ColorRed)
-	RedBold    = Red.Bold(true)
+	Text       lipgloss.Style
+	Strong     lipgloss.Style
+	Muted      lipgloss.Style
+	Quiet      lipgloss.Style
+	Border     lipgloss.Style
+	Accent     lipgloss.Style
+	AccentBold lipgloss.Style
+	Gold       lipgloss.Style
+	GoldBold   lipgloss.Style
+	Teal       lipgloss.Style
+	TealBold   lipgloss.Style
+	Green      lipgloss.Style
+	GreenBold  lipgloss.Style
+	Red        lipgloss.Style
+	RedBold    lipgloss.Style
 )
 
 // The selection surface. It is a tint, never a fill: the row keeps every element
@@ -89,47 +90,41 @@ var (
 var (
 	// SelectionBG tints a selected row instead of painting over it, so every
 	// element on the row keeps its own colour.
-	SelectionBG = lipgloss.NewStyle().Background(ColorSelection)
+	SelectionBG lipgloss.Style
 	// SelectionEdge is the selected row's first cell: the accent mark on the
 	// tint, never a fill over the row's content.
-	SelectionEdge = SelectionBG.Foreground(ColorAccent).Bold(true)
+	SelectionEdge lipgloss.Style
 	// TextOnSelection is the selected row's primary text: the text role, bold,
 	// on the tint.
-	TextOnSelection = SelectionBG.Foreground(ColorText).Bold(true)
+	TextOnSelection lipgloss.Style
 	// MutedOnSelection is every secondary fact on the tint.
-	MutedOnSelection = SelectionBG.Foreground(ColorMutedOnSelection)
+	MutedOnSelection lipgloss.Style
 	// GuideOnSelection is the tree structure on the tint.
-	GuideOnSelection = SelectionBG.Foreground(ColorGuideOnSelection)
+	GuideOnSelection lipgloss.Style
 	// ChipOnSelection is the chip slab one step brighter, for a token that sits
 	// on the tint.
-	ChipOnSelection = lipgloss.NewStyle().
-			Background(ColorChipOnSelection).
-			Foreground(ColorText).
-			Bold(true)
+	ChipOnSelection lipgloss.Style
 	// ChipAccentOnSelection is the accent chip's slab on the tint: the accent
 	// label keeps its colour on the brighter token surface.
-	ChipAccentOnSelection = lipgloss.NewStyle().
-				Background(ColorChipOnSelection).
-				Foreground(ColorAccent).
-				Bold(true)
+	ChipAccentOnSelection lipgloss.Style
 )
 
 // Chips are the tokens of the interface: keys, modes and short state words. One
 // dark surface, one role for the label, so a chip is always a chip.
 var (
-	ChipText   = chipSurface(ColorText)
-	ChipAccent = chipSurface(ColorAccent)
-	ChipGold   = chipSurface(ColorGold)
-	ChipTeal   = chipSurface(ColorTeal)
-	ChipGreen  = chipSurface(ColorGreen)
-	ChipRed    = chipSurface(ColorRed)
+	ChipText   lipgloss.Style
+	ChipAccent lipgloss.Style
+	ChipGold   lipgloss.Style
+	ChipTeal   lipgloss.Style
+	ChipGreen  lipgloss.Style
+	ChipRed    lipgloss.Style
 )
 
 // OnSelection lifts a role onto the selection tint. The role keeps its colour
 // and gains the background, so green, gold, teal and red mean the same thing on
 // a selected row as off it.
 func OnSelection(role lipgloss.Style) lipgloss.Style {
-	return role.Background(ColorSelection)
+	return role.Background(Active().Selection)
 }
 
 // The hover surface. A hovered row is where the pointer is, not where the user
@@ -138,24 +133,24 @@ func OnSelection(role lipgloss.Style) lipgloss.Style {
 var (
 	// HoverBG tints a hovered row, one step above the panel and fainter than the
 	// selection.
-	HoverBG = lipgloss.NewStyle().Background(ColorHover)
+	HoverBG lipgloss.Style
 	// TextOnHover is a hovered row's primary text.
-	TextOnHover = HoverBG.Foreground(ColorText).Bold(true)
+	TextOnHover lipgloss.Style
 	// MutedOnHover is every secondary fact on the hover tint.
-	MutedOnHover = HoverBG.Foreground(ColorMuted)
+	MutedOnHover lipgloss.Style
 	// GuideOnHover is the tree structure on the hover tint.
-	GuideOnHover = HoverBG.Foreground(ColorGuide)
+	GuideOnHover lipgloss.Style
 )
 
 // OnHover lifts a role onto the hover tint, the way OnSelection lifts it onto the
 // selection: state keeps its meaning while the pointer is over it.
 func OnHover(role lipgloss.Style) lipgloss.Style {
-	return role.Background(ColorHover)
+	return role.Background(Active().Hover)
 }
 
-func chipSurface(fg lipgloss.Color) lipgloss.Style {
+func chipSurface(bg, fg lipgloss.Color) lipgloss.Style {
 	return lipgloss.NewStyle().
-		Background(ColorChip).
+		Background(bg).
 		Foreground(fg).
 		Bold(true)
 }
