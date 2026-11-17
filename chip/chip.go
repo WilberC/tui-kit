@@ -114,6 +114,11 @@ type HintBar struct {
 	// empty bar.
 	Page int
 
+	// PagingLabel names the word of the paging chip, so a product may localise
+	// it — the dock says `más`. The position stays `n/m` after whatever word
+	// the bar is given. An empty PagingLabel is the default word, "more".
+	PagingLabel string
+
 	// seen is the identity of the hint set the bar last drew, and known says
 	// whether it has drawn one at all: the first set keeps the page a caller asked
 	// for (a HintBar{Page: 1}), and a set that differs from the one before starts
@@ -152,7 +157,8 @@ func setKey(hints []Hint) string {
 // Render draws the page the bar shows: as many hints as fit, whole and in
 // declaration order (the order is the priority). When the hints do not fit,
 // every page ends with the paging chip — the PageKey slab and the muted
-// position, `more 1/2` — and that chip is part of the width budget, so a line
+// position, `<PagingLabel> n/m` ("more 1/2" by default) — and that chip is
+// part of the width budget, so a line
 // never exceeds width. When they all fit, the bar is one line with no paging
 // chip, exactly as Hints always rendered it. A hint wider than the bar is
 // clipped with the ellipsis; a hint is never dropped without the chip.
@@ -199,7 +205,7 @@ type drawnChip struct {
 // cannot disagree about an x.
 func (b *HintBar) layout(width int, hints []Hint) bar {
 	rendered := pairs(hints)
-	pages := paginate(width, rendered)
+	pages := paginate(width, b.pagingWord(), rendered)
 	page := pageIndex(b.Page, len(pages))
 
 	out := bar{}
@@ -220,7 +226,7 @@ func (b *HintBar) layout(width int, hints []Hint) bar {
 			x:  text.Width(out.line),
 			w:  text.Width(Chip(theme.ChipText, PageKey)),
 		})
-		out.line += Pair(theme.ChipText, PageKey, paging(page, len(pages)))
+		out.line += Pair(theme.ChipText, PageKey, paging(b.pagingWord(), page, len(pages)))
 	}
 	return out
 }
@@ -241,7 +247,7 @@ func (b *HintBar) Pages(width int, hints ...Hint) int {
 	if width <= 0 || len(hints) == 0 {
 		return 1
 	}
-	return len(paginate(width, pairs(hints)))
+	return len(paginate(width, b.pagingWord(), pairs(hints)))
 }
 
 // Next moves the bar to its next page and wraps from the last page back to page
@@ -266,13 +272,13 @@ func Hints(width int, hints ...Hint) string {
 // paginate splits rendered hints into consecutive pages. When the whole bar fits
 // it is one page with no paging chip; otherwise each page reserves the room the
 // chip needs, so the bar never takes a second row.
-func paginate(width int, items []string) [][]int {
+func paginate(width int, word string, items []string) [][]int {
 	pages := split(width, items, 0)
 	for round := 0; round < maxPagingRounds; round++ {
 		if len(pages) == 1 && width <= pageWidth(pages[0], items) {
 			return pages
 		}
-		next := split(width, items, reserve(len(pages)))
+		next := split(width, items, reserve(len(pages), word))
 		if len(next) == len(pages) {
 			return next
 		}
@@ -311,17 +317,31 @@ func split(width int, items []string, reserve int) [][]int {
 
 // reserve is the room one paging chip takes away from a page: the gutter that
 // separates it from the last hint plus the chip of the widest label it can carry.
-func reserve(pages int) int {
+func reserve(pages int, word string) int {
 	if pages < 2 {
 		return 0
 	}
-	return text.Width(Gutter) + text.Width(Pair(theme.ChipText, PageKey, paging(pages-1, pages)))
+	return text.Width(Gutter) + text.Width(Pair(theme.ChipText, PageKey, paging(word, pages-1, pages)))
 }
 
-// paging is the paging chip's label: the current page, then the page count.
-func paging(page, pages int) string {
-	return "more " + strconv.Itoa(page+1) + "/" + strconv.Itoa(pages)
+// paging is the paging chip's label: its word — the default is "more" — then
+// the current page and the page count.
+func paging(word string, page, pages int) string {
+	return word + " " + strconv.Itoa(page+1) + "/" + strconv.Itoa(pages)
 }
+
+// pagingWord is the word the paging chip carries: the product's label, or the
+// default "more" when none was set.
+func (b *HintBar) pagingWord() string {
+	if b.PagingLabel == "" {
+		return defaultPagingWord
+	}
+	return b.PagingLabel
+}
+
+// defaultPagingWord is the label an empty PagingLabel renders: the word the
+// bar has always shown.
+const defaultPagingWord = "more"
 
 // pageIndex folds a page into range, so a caller's own counter can never render
 // an empty bar.

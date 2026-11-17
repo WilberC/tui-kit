@@ -126,6 +126,12 @@ Rules:
   never collides with the filter the screen's key bar reads. `tab` moves to the
   next page and **wraps** from the last page back to the first. The kit renders
   the key; each product wires the handler.
+- **The paging word may be localised** (`HintBar.PagingLabel`): the default
+  word is `more`; a product that speaks another language names its own — the
+  dock's footer says `más 1/2`. The position stays `n/m` after whatever word
+  the bar carries, the labelled chip stays **part of the width budget** (a
+  longer word pages sooner instead of pushing a line over the frame), and the
+  paging chip's click zone is unchanged.
 - When everything fits, the bar is one line with **no paging chip** and the key
   does nothing. The bar never wraps and never scrolls mid-hint: the only thing
   ever cut is one hint wider than the whole bar, and that cut ends with `…`.
@@ -143,6 +149,16 @@ Rules:
   keybinding guide's binding is a token on the same slab, with the accent label.
   The role follows the row's surface, so no product overwrites `Roles.Chip` to
   paint one column differently.
+- **One chip is filled with the accent** (`theme.ChipAccentFill`): the active
+  tab of a navbar. The slab carries the accent and the label sits in the chip
+  surface colour, so the tab reads as a solid slab of the product's voice.
+  It is the **only** filled chip; the inactive tabs stay quiet slabs
+  (`theme.ChipText`), and a filled slab anywhere else is emphasis the interface
+  has no word for.
+- **An off/disabled state word keeps the slab and drops the voice**
+  (`theme.ChipMuted`): the same dark slab with the muted label, bold like every
+  other chip, so a state that is not in force still reads as a token beside its
+  live siblings (` on  off `) and never competes with them for the eye.
 
 Page 1 and page 2 of the same bar at 60 cells:
 
