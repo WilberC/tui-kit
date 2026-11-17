@@ -114,10 +114,19 @@ var (
 var (
 	ChipText   lipgloss.Style
 	ChipAccent lipgloss.Style
-	ChipGold   lipgloss.Style
-	ChipTeal   lipgloss.Style
-	ChipGreen  lipgloss.Style
-	ChipRed    lipgloss.Style
+	// ChipAccentFill is the one chip filled with the accent: the active tab of
+	// a navbar. The slab carries the accent as its background and the label sits
+	// in the chip surface colour, so the tab reads as a solid slab of the
+	// product's voice; inactive tabs stay quiet slabs (ChipText).
+	ChipAccentFill lipgloss.Style
+	// ChipMuted is the chip of an off/disabled state word: the same dark slab
+	// as every other chip, with the muted label, so a state that is not in
+	// force still reads as a token and never competes with a live one.
+	ChipMuted lipgloss.Style
+	ChipGold  lipgloss.Style
+	ChipTeal  lipgloss.Style
+	ChipGreen lipgloss.Style
+	ChipRed   lipgloss.Style
 )
 
 // OnSelection lifts a role onto the selection tint. The role keeps its colour

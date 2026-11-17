@@ -159,6 +159,11 @@ func rebuild() {
 
 	ChipText = chipSurface(active.Chip, active.Text)
 	ChipAccent = chipSurface(active.Chip, active.Accent)
+	ChipAccentFill = lipgloss.NewStyle().
+		Background(active.Accent).
+		Foreground(active.Chip).
+		Bold(true)
+	ChipMuted = chipSurface(active.Chip, active.Muted)
 	ChipGold = chipSurface(active.Chip, active.Gold)
 	ChipTeal = chipSurface(active.Chip, active.Teal)
 	ChipGreen = chipSurface(active.Chip, active.Green)
