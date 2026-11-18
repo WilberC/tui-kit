@@ -465,8 +465,8 @@ These are real regressions from the two products. Do not bring them back.
 | A body with no bottom padding | Content touched the rule and the section above read as cut off. | One blank row at the top of the body and one at the bottom, always. |
 | Body padding rows drawn without the column separators | The column rule broke into a lone tick under `┬`, a gap, the rule resuming on the content, and another tick above `┴`. | Blank body rows are grid rows: same widths, same separators. |
 | Empty groups drawn under a zero-match filter | The screen looked broken rather than empty. | One calm message and the way out. |
-| Loose text as a click target | Every word became a maybe-link, and the screen stopped saying what was actionable. | Only a chip and a row are clickable; the kit records zones for nothing else. |
-| A destructive action on a single click | One slipped press deleted the thing the user was reading. | A click selects; enter or a double click runs, and a destructive action asks first. |
+| Loose text as a click target | Every word became a maybe-link, and the screen stopped saying what was actionable. | Only a chip (a reversible toggle is a chip) and a row are clickable; the kit records zones for nothing else. |
+| A destructive action on a single click | One slipped press deleted the thing the user was reading. | A click selects, and a reversible toggle flips on one click like `space`; enter or a double click runs, and a destructive action asks first. |
 | A mouse-only feature | A keyboard user lost an action that had no key. | Every click maps to a key: mouse-only is a bug. |
 | A hover as strong as the selection | The pointer competed with the cursor and the row the user chose disappeared. | A fainter tint, selection wins, no accent edge, no gold mark. |
 | Hand-rolled text selection in a screen that captures the mouse | A second, worse editor: no word boundaries, no scrollback, its own clipboard. | Let the terminal keep the drag; copy one value with one OSC 52 key. |
@@ -487,7 +487,10 @@ Rules:
 
 - **Only a chip and a row are clickable.** Loose text, a rule, a header, a title
   and a border are not targets, and the kit records no zone for them, so a
-  product cannot wire one by accident.
+  product cannot wire one by accident. A reversible state control — an ` on
+  `/` off ` badge, a `▾`/`▸` expand/collapse toggle — **is a chip**: the
+  product records its cells under a `zone.ToggleID` id (`zone.IsToggle`
+  recognises it), so one click can find it.
 - **The kit records where it drew them, the product acts.** `zone.Map` collects
   each element's rectangle in the frame-content coordinates the surface names
   (`frame.Surface.BodyY`, `BottomY`, `ColumnX`; `list.Entry` and
@@ -495,8 +498,12 @@ Rules:
   `PopupZones` translate the map into the pane's own cells — centring, border,
   header rows, body padding and column offsets included — dropping anything the
   surface did not draw. The product asks `Hit(x, y)` and gets an id.
-- **A click selects; it never runs.** Selecting is reversible and is what a
-  pointer is good at. **Enter or a double click runs** the selection.
+- **A click selects; a reversible toggle flips; it never runs.** Selecting is
+  reversible and is what a pointer is good at: a click on a row selects it. A
+  reversible state control on that row — an ` on `/` off ` chip, a `▾`/`▸`
+  toggle — changes with **one click**, exactly what `space` does there, and the
+  flip selects the row with it; a click anywhere else on the row only selects.
+  **Enter or a double click runs** the selection.
 - **A destructive action never fires on one click.** Killing a session, deleting
   a workspace or overwriting a file has no single-click path: it asks, and its
   confirmation keeps a keyboard answer.
@@ -507,8 +514,9 @@ Rules:
   over hover, and a hovered row carries no `▌`. A fact glyph — the gold `◆`, a
   live `●`, a failed `○` — stays on a hovered row: it describes the row, not the
   cursor.
-- **Keyboard parity, always.** A click is the cursor keys, a run is `enter`, and a
-  click on the paging chip is `chip.PageKey`. The hint bar says so.
+- **Keyboard parity, always.** A click is the cursor keys, a run is `enter`, a
+  click on the paging chip is `chip.PageKey`, and a click on a reversible
+  toggle is `space`. The hint bar says so.
 - **Shift+drag still belongs to the terminal.** A program that captures the mouse
   can leave the drag to it, but whether plain shift+drag selection and OSC 52
   pass-through work inside herdr is a product-side check; it is not verified in
@@ -528,6 +536,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.bar.Next(m.width, m.hints()...)
 			case strings.HasPrefix(id, "row:"):
 				m.cursor = rowIndex(id) // a click selects; enter runs
+			}
+			if name, toggle := zone.IsToggle(id); toggle {
+				m.flip(name) // a click on a reversible toggle is space: it flips and selects
 			}
 		}
 	}
