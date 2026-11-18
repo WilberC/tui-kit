@@ -12,6 +12,36 @@
 // too. A map is a convenience, not a second interface.
 package zone
 
+import "strings"
+
+// TogglePrefix marks the zone of a reversible state control: an ` on `/` off `
+// chip, a ▾/▸ expand/collapse toggle. A click on one flips the state — exactly
+// what `space` does on the row, which is the keyboard parity the rules ask
+// for — while a click anywhere else on the row only selects it.
+const TogglePrefix = "toggle:"
+
+// ToggleID names the zone of the toggle control that flips the state called id,
+// so a product records the control's cells under an id a click handler
+// recognises with IsToggle. An empty id names no state, so ToggleID returns
+// nothing for it.
+func ToggleID(id string) string {
+	if id == "" {
+		return ""
+	}
+	return TogglePrefix + id
+}
+
+// IsToggle reports whether an id names a toggle control and, when it does, the
+// state name ToggleID was built from. The bare prefix names no state and is not
+// a toggle.
+func IsToggle(id string) (string, bool) {
+	name, ok := strings.CutPrefix(id, TogglePrefix)
+	if !ok || name == "" {
+		return "", false
+	}
+	return name, true
+}
+
 // Rect is a rectangle of terminal cells: X and Y are its top-left cell and W and
 // H its size in cells.
 type Rect struct {
