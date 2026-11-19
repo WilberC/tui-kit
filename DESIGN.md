@@ -316,6 +316,53 @@ One glyph, one meaning, one cell wide — so a glyph never shifts a column.
 Tree guides **close** a group: the last entry of a group is `└─`, the others
 `├─`. A list that trails off with `├─` looks unfinished.
 
+### Agent role glyphs
+
+A subagent row carries **two** glyphs, each with its own question: the status
+mark owns state (live, idle, failed) and the role glyph owns kind — the family
+of work the agent is doing. The role glyph sits **between the status mark and
+the name**, one cell wide, rendered in the row's own text role (it is a fact of
+the row, not state). The shipped set is plain Unicode; the Nerd Font alternates
+are recorded for later and are **not shipped**.
+
+| Glyph | Meaning | Alternate (not shipped) |
+| --- | --- | --- |
+| `◎` | explore — a scout reading the codebase | U+F06E |
+| `✓` | verify — a checker proving the work | U+F00C |
+| `⚒` | worker — a builder making the change | U+F0AD |
+| `⚖` | judge — a decision-maker weighing the work | U+F0E3 |
+| `✚` | fix — a repairer correcting a defect | U+F0FA |
+| `⌕` | review — a reader going over a diff | U+F002 |
+| `–` | unknown — no family word in the id | muted, the "no value" glyph |
+
+The `glyph` package maps an agent id to its family (`glyph.Role`),
+case-insensitively: a family word contained anywhere in the id names the family,
+`jd-judge-*`/`jd-fix-*` name theirs by prefix, `review-*` by prefix only.
+
+### Task status marks
+
+The todo vocabulary of gentle-shell, one mark per status:
+
+| Glyph | Meaning | Role |
+| --- | --- | --- |
+| `○` | pending | muted (matches idle) |
+| `◐` | in progress | teal (the live/WIP role) |
+| `⊘` | blocked | red |
+| `✓` | done | green — usually folded into a header count (`✓ 3 done`) |
+| `✕` | dropped | muted, excluded from the counts |
+
+`✓` is shared with the verify role glyph, and that is unambiguous **by column**:
+a status mark lives in the row's status column and a role glyph in the role
+column, and a row never shows two of either, so a `✓` read as a role is always
+an agent verifying and a `✓` read as a status is always a done item. `glyph.Status`
+maps the status words (`pending`, `in_progress`, `blocked`, `done`, `dropped` —
+with the dropped aliases `cancelled`/`canceled`/`abandoned`) to these marks.
+
+**Every glyph here measures one cell with `text.Width`** — including `⚒` and
+`⚖` from the Misc Symbols block, which are East-Asian Ambiguous but render one
+cell in the common monospace fonts — and the `glyph` package pins that rule with
+a test, so a glyph can never shift a column.
+
 ## 7. Responsive rules
 
 The frame owns its width. Whatever the terminal does, no line wraps and no line
