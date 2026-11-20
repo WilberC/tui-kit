@@ -100,6 +100,7 @@ func TestEveryGlyphIsOneCellWide(t *testing.T) {
 		"Blocked":    glyph.Blocked,
 		"Done":       glyph.Done,
 		"Dropped":    glyph.Dropped,
+		"Job":        glyph.Job,
 	}
 	for name, g := range glyphs {
 		if width := text.Width(g); width != 1 {

@@ -38,6 +38,11 @@ const (
 	Dropped    = "✕" // muted, excluded from the counts
 )
 
+// Job mark: a background job that is still running (a shell command or a
+// monitor the agent started). It is gentle-shell's own jobs glyph, rendered in
+// the live/WIP role; a finished job is gone from a dock, so it has no mark.
+const Job = "⧗" // U+29D7 · running background job, teal
+
 // Role maps an agent id to its family glyph.
 //
 // The id is matched case-insensitively: a word contained anywhere in the id

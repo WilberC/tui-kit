@@ -358,6 +358,14 @@ an agent verifying and a `✓` read as a status is always a done item. `glyph.St
 maps the status words (`pending`, `in_progress`, `blocked`, `done`, `dropped` —
 with the dropped aliases `cancelled`/`canceled`/`abandoned`) to these marks.
 
+### Job mark
+
+A running background job — a shell command or a monitor the agent started —
+reads `⧗` (`glyph.Job`, U+29D7), gentle-shell's own jobs glyph, in the teal
+live/WIP role. Only running jobs get a row: a finished job leaves the list, so
+there is no finished mark. The row reads mark, job id, muted label, and the
+elapsed time right-aligned and muted (`⧗ job-1 dev server      3m 12s`).
+
 **Every glyph here measures one cell with `text.Width`** — including `⚒` and
 `⚖` from the Misc Symbols block, which are East-Asian Ambiguous but render one
 cell in the common monospace fonts — and the `glyph` package pins that rule with
