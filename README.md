@@ -196,7 +196,7 @@ go run ./examples/gallery
 | `chip/` | `Chip`, `Pair`, `Cell`/`UnsetCell` chip columns, `Legend`, and the `HintBar` that pages hints behind `tab` instead of hiding them (`Hints` is its page-0 render; `RenderZones` records each chip and `chip.PageZone`). | theme, text, zone |
 | `list/` | `Roles`/`RowRoles`/`RowRolesFor` (selection and hover, the plain and accent chip roles), the tree `Guide`, `Row`, `SelectedRow`, `ChipRow`, the zone-aware `Entry` (a chip column, no chip column, a nested row under a `Parent`, or a `Trailing` column, right-aligned or at a reserved `TrailingWidth`), `Section`, agent states. | theme, text, zone |
 | `zone/` | The hit-test map: named rectangles, `Hit(x, y)`, and the rewrite a surface applies (`Offset`, `Clip`). No I/O, no drawing. | nothing |
-| `glyph/` | The agent role glyphs (`Role`) and the todo status marks (`Status`), one cell wide each — the mark owns state, the glyph owns kind. | nothing |
+| `glyph/` | The agent role glyphs (`Role`) and the todo status marks (`Status`), the running-job mark (`Job`), one cell wide each — the mark owns state, the glyph owns kind. | nothing |
 | `clipboard/` | `OSC52(text)`: the sequence that sets the terminal's clipboard, and nothing else. | nothing |
 | `spinner/` | The four-frame work-in-progress tick; the caller owns the tick. | theme |
 
